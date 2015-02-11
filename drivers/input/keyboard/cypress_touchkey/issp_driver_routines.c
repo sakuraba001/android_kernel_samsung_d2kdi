@@ -465,77 +465,7 @@ static void cypress_power_onoff(int onoff)
 
 #else
 
-#if defined(CONFIG_MACH_SUPERIORLTE_SKT)
-static void cypress_power_onoff(int onoff)
-{
-	int ret, rc, rt;
-	static struct regulator *reg_l29, *reg_l10, *reg_l11;
-
-	if (!reg_l29) {
-		reg_l29 = regulator_get(NULL, "8921_l29");
-		ret = regulator_set_voltage(reg_l29, 1800000, 1800000);
-
-		if (IS_ERR(reg_l29)) {
-			pr_err("could not get 8921_l29, ret = %ld\n",
-				PTR_ERR(reg_l29));
-			return;
-		}
-	}
-
-	if (!reg_l10) {
-		reg_l10 = regulator_get(NULL, "8921_l10");
-		ret = regulator_set_voltage(reg_l10, 3000000, 3000000);
-
-		if (IS_ERR(reg_l10)) {
-			pr_err("could not get 8921_l10, ret = %ld\n",
-				PTR_ERR(reg_l10));
-			return;
-		}
-	}
-
-	if (!reg_l11) {
-		reg_l11 = regulator_get(NULL, "8921_l11");
-		ret = regulator_set_voltage(reg_l11, 3000000, 3000000);
-
-		if (IS_ERR(reg_l11)) {
-			pr_err("could not get 8921_l11, ret = %ld\n",
-				PTR_ERR(reg_l11));
-			return;
-		}
-	}
-
-	if (onoff) {
-		ret = regulator_enable(reg_l29);
-		rc =  regulator_enable(reg_l10);
-		rt =  regulator_enable(reg_l11);
-		if (ret) {
-			pr_err("enable l29 failed, ret=%d\n", ret);
-			return;
-		}
-		if (rc) {
-			pr_err("enable l10 failed, rc=%d\n", rc);
-			return;
-		}
-		if (rt) {
-			pr_err("enable l11 failed, rt=%d\n", rt);
-			return;
-		}
-		pr_info("cypress_power_on is finished.\n");
-	} else {
-		rc =  regulator_disable(reg_l10);
-		rt =  regulator_disable(reg_l11);
-		if (rc) {
-			pr_err("enable l10 failed, rc=%d\n", rc);
-			return;
-		}
-		if (rt) {
-			pr_err("enable l11 failed, rc=%d\n", rt);
-			return;
-		}
-		pr_info("cypress_power_off is finished.\n");
-	}
-}
-#elif defined(CONFIG_MACH_EXPRESS)
+#if defined(CONFIG_MACH_EXPRESS)
 static void cypress_power_onoff(int onoff)
 {
 	int ret;

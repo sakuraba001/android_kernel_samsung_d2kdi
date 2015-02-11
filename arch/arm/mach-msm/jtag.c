@@ -36,7 +36,6 @@
 uint32_t msm_jtag_save_cntr[NR_CPUS];
 uint32_t msm_jtag_restore_cntr[NR_CPUS];
 
-unsigned int breadcrumb_jtag_save;
 unsigned int breadcrumb_jtag_restore;
 
 struct dbg_ctx {
@@ -1020,19 +1019,15 @@ void msm_jtag_save_state(void)
 	int cpu;
 
 	cpu = raw_smp_processor_id();
-	breadcrumb_jtag_save = 1;
 
 	msm_jtag_save_cntr[cpu]++;
 	/* ensure counter is updated before moving forward */
 	mb();
-	breadcrumb_jtag_save = 2;
 
 	if (dbg.arch_supported)
 		dbg_save_state(cpu);
-	breadcrumb_jtag_save = 3;
 	if (etm.arch_supported)
 		etm_save_state(cpu);
-	breadcrumb_jtag_save = 99;
 }
 
 void msm_jtag_restore_state(void)

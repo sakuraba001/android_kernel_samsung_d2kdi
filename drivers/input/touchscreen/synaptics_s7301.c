@@ -168,7 +168,7 @@ static bool fw_updater(struct ts_data *ts, char *mode)
 {
 	u8 buf[5] = {0, };
 	bool ret = false;
-	msleep(200);
+	mdelay(100);
 #if DEBUG_PRINT
 	pr_info("tsp: Enter the fw_updater.");
 #endif
@@ -921,15 +921,8 @@ static void ts_late_resume(struct early_suspend *h)
 	u8 buf[2];
 
 	ts = container_of(h, struct ts_data, early_suspend);
-	#if defined(CONFIG_MACH_ESPRESSO10_VZW)
-		mdelay(300);
-		ts->platform_data->set_power(1);
-		mdelay(160);
-
-	#else
-		ts->platform_data->set_power(1);
-		mdelay(300);
-	#endif
+	ts->platform_data->set_power(1);
+	mdelay(300);
 
 	init_tsp(ts);
 
@@ -956,7 +949,7 @@ static void timer_cb(unsigned long data)
 }
 #endif
 
-#define TRACKING_COORD			0
+#define TRACKING_COORD			1
 
 #define REG_DEVICE_STATUS		0x13
 #define REG_FINGER_STATUS		0x15
@@ -1151,7 +1144,6 @@ static int __devinit ts_probe(struct i2c_client *client,
 	/* Check the new fw. and update */
 	set_fw_version(FW_KERNEL_VERSION, FW_DATE);
 	fw_updater(ts, "normal");
-	reset_tsp(ts);
 
 	if (ts->client->irq) {
 #if DEBUG_PRINT
@@ -1223,6 +1215,7 @@ static int __devinit ts_probe(struct i2c_client *client,
 	ts->early_suspend.resume = ts_late_resume;
 	register_early_suspend(&ts->early_suspend);
 #endif
+	reset_tsp(ts);
 
 	/* To set TA connet mode when boot while keep TA, USB be connected. */
 	set_ta_mode(&(ts->platform_data->ta_state));

@@ -207,12 +207,15 @@ static void reactive_work_func(struct work_struct *work)
 		 MPUREG_INT_STATUS, 1, &reg_data);
 	if (err)
 		pr_err("%s i2c err\n", __func__);
-	if (reg_data & BIT_MOT_EN) {
+	if ((reg_data & BIT_MOT_EN) ||
+		((reg_data & BIT_RAW_RDY_EN) &&
+		mldl_cfg->inv_mpu_state->reactive_factory)) {
 		if (mldl_cfg->inv_mpu_state->accel_reactive)
 			disable_irq_wake(mpuirq_dev_data.irq);
 
 		pr_info("Reactive Alert\n");
 		mldl_cfg->inv_mpu_state->accel_reactive = false;
+		mldl_cfg->inv_mpu_state->reactive_factory = false;
 		wake_lock_timeout(&mpuirq_dev_data.reactive_wake_lock,
 			msecs_to_jiffies(2000));
 		err = inv_serial_read(slave_adapter, 0x68,

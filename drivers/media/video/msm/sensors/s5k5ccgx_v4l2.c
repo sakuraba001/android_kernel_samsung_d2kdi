@@ -126,8 +126,6 @@ static unsigned int config_csi2;
 static struct s5k5ccgx_ctrl *s5k5ccgx_ctrl;
 int af_low_lux;
 static bool mode_enable;
-static bool wb_enable;
-
 
 struct s5k5ccgx_format {
 	enum v4l2_mbus_pixelcode code;
@@ -1480,7 +1478,7 @@ effect_end:
 
 static int s5k5ccgx_set_whitebalance(int wb)
 {
-	if ((!mode_enable) || (wb_enable))
+	if (!mode_enable)
 		goto whitebalance_end;
 
 	switch (wb) {
@@ -1512,7 +1510,6 @@ static int s5k5ccgx_set_whitebalance(int wb)
 
 whitebalance_end:
 	s5k5ccgx_ctrl->settings.wb = wb;
-	wb_enable = false;
 
 	return 0;
 }
@@ -1725,8 +1722,6 @@ void sensor_native_control(void __user *arg)
 	case EXT_CAM_SCENE_MODE:
 		s5k5ccgx_set_scene_mode(ctrl_info.value_1);
 		s5k5ccgx_ctrl->settings.scenemode = ctrl_info.value_1;
-		if (s5k5ccgx_ctrl->settings.scenemode == CAMERA_SCENE_AUTO)
-			wb_enable = true;
 		/*s5k5ccgx_ctrl->flash_mode = ctrl_info.value_2;*/
 		break;
 

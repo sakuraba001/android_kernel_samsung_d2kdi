@@ -835,8 +835,9 @@ static int set_discoverable(struct sock *sk, u16 index, void *data, u16 len)
 
 	if (cp->val)
 		scan |= SCAN_INQUIRY;
-	else
+	else {
 		cancel_delayed_work(&hdev->discov_off);
+	}
 
 	err = hci_send_cmd(hdev, HCI_OP_WRITE_SCAN_ENABLE, 1, &scan);
 	if (err < 0)

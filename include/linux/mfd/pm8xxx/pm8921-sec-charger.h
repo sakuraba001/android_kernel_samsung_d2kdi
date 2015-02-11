@@ -46,8 +46,8 @@ enum cable_type_t {
 #ifdef CONFIG_WIRELESS_CHARGING
 	CABLE_TYPE_WPC = 10,
 #endif
-#if defined (CONFIG_MACH_K2_KDI)
-	CABLE_TYPE_HDMI = 11,
+#if defined (CONFIG_MACH_M2_KDI)
+        CABLE_TYPE_HDMI = 11,
 #endif
 };
 

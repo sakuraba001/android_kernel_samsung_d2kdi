@@ -330,13 +330,13 @@ static int is_pm8921_sec_charger_using(void)
 #elif defined(CONFIG_MACH_M2_SKT)
 	if (system_rev >= 0x4)
 		return 0;
-#elif (defined(CONFIG_MACH_GOGH) || defined(CONFIG_MACH_INFINITE))
+#elif defined(CONFIG_MACH_GOGH)
 	if (system_rev >= 0x1)
 		return 0;
 #elif defined(CONFIG_MACH_INFINITE)
 	if (system_rev >= 0x1)
 		return 0;
-#elif defined(CONFIG_MACH_M2_DCM) || defined(CONFIG_MACH_K2_KDI)
+#elif defined(CONFIG_MACH_M2_DCM) || defined(CONFIG_MACH_M2_KDI)
 	if (system_rev >= 0x1)
 		return 0;
 #elif defined(CONFIG_MACH_AEGIS2)
@@ -4105,7 +4105,11 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 
 	create_debugfs_entries(chip);
 	/* create sec detail attributes */
-	sec_bat_create_attrs(chip->batt_psy.dev);
+	rc = sec_bat_create_attrs(chip->batt_psy.dev);
+	if (rc) {
+		pr_err("couldn't create attrs rc=%d\n", rc);
+		goto unregister_batt;
+	}
 
 	chip->entry = create_proc_entry("batt_info_proc", S_IRUGO, NULL);
 	if (!chip->entry) {

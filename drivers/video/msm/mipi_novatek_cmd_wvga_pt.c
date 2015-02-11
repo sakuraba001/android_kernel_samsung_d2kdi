@@ -439,7 +439,7 @@ static int get_candela_index(int bl_level)
 }
 
 static struct mipi_panel_data mipi_pd = {
-	.panel_name = "NOV_NT35510\n",
+	.panel_name = "NOVATEK_NT35510\n",
 	.ready_to_on_hydis = {novatek_panel_ready_to_on_cmds_nt
 			, ARRAY_SIZE(novatek_panel_ready_to_on_cmds_nt)},
 	.ready_to_off = {novatek_panel_ready_to_off_cmds
@@ -525,7 +525,7 @@ static int __init mipi_cmd_novatek_wvga_pt_init(void)
 	pinfo.mipi.wr_mem_continue = 0x3c;
 	pinfo.mipi.wr_mem_start = 0x2c;
 	pinfo.mipi.dsi_phy_db = &dsi_cmd_mode_phy_db;
-
+	pinfo.mipi.esc_byte_ratio = 4;
 
 	ret = mipi_novatek_disp_device_register(&pinfo, MIPI_DSI_PRIM,
 						MIPI_DSI_PANEL_WVGA_PT,

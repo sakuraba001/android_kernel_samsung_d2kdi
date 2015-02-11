@@ -153,6 +153,39 @@ int chk_apps_master(void)
 		return 0;
 }
 
+/*
+ * This function should be called if you feel that the logging process may
+ * need to be woken up. For instance, if the logging mode is MEMORY_DEVICE MODE
+ * and while trying to read data from a SMD data channel there are no buffers
+ * available to read the data into, then this function should be called to
+ * determine if the logging process needs to be woken up.
+ */
+void chk_logging_wakeup(void)
+{
+	int i;
+
+	/* Find the index of the logging process */
+	for (i = 0; i < driver->num_clients; i++)
+		if (driver->client_map[i].pid ==
+			driver->logging_process_id)
+			break;
+
+	if (i < driver->num_clients) {
+		/* At very high logging rates a race condition can
+		 * occur where the buffers containing the data from
+		 * an smd channel are all in use, but the data_ready
+		 * flag is cleared. In this case, the buffers never
+		 * have their data read/logged.  Detect and remedy this
+		 * situation.
+		 */
+		if ((driver->data_ready[i] & USER_SPACE_LOG_TYPE) == 0) {
+			driver->data_ready[i] |= USER_SPACE_LOG_TYPE;
+			pr_debug("diag: Force wakeup of logging process\n");
+			wake_up_interruptible(&driver->wait_q);
+		}
+	}
+}
+
 void __diag_smd_send_req(void)
 {
 	void *buf = NULL;
@@ -196,6 +229,9 @@ void __diag_smd_send_req(void)
 							 write_ptr_modem);
 			}
 		}
+	} else if (driver->ch && !buf &&
+		(driver->logging_mode == MEMORY_DEVICE_MODE)) {
+		chk_logging_wakeup();
 	}
 }
 
@@ -340,6 +376,9 @@ void __diag_smd_wcnss_send_req(void)
 					 write_ptr_wcnss);
 			}
 		}
+	} else if (driver->ch_wcnss && !buf &&
+		(driver->logging_mode == MEMORY_DEVICE_MODE)) {
+		chk_logging_wakeup();
 	}
 }
 
@@ -386,6 +425,9 @@ void __diag_smd_qdsp_send_req(void)
 							 write_ptr_qdsp);
 			}
 		}
+	} else if (driver->chqdsp && !buf &&
+		(driver->logging_mode == MEMORY_DEVICE_MODE)) {
+		chk_logging_wakeup();
 	}
 }
 
@@ -439,6 +481,7 @@ void diag_create_msg_mask_table(void)
 	CREATE_MSG_MASK_TBL_ROW(20);
 	CREATE_MSG_MASK_TBL_ROW(21);
 	CREATE_MSG_MASK_TBL_ROW(22);
+	CREATE_MSG_MASK_TBL_ROW(23);
 }
 
 static void diag_set_msg_mask(int rt_mask)
@@ -705,17 +748,9 @@ void diag_send_log_mask_update(smd_channel_t *ch, int equip_id)
 	void *buf = driver->buf_log_mask_update;
 	int header_size = sizeof(struct diag_ctrl_log_mask);
 	struct mask_info *ptr = (struct mask_info *)driver->log_masks;
-	int i, size, wr_size = -ENOMEM, retry_count = 0, proc_id = -1, kk;
-	unsigned long flags = 0;
-	void *temp_buf;
+	int i, size, wr_size = -ENOMEM, retry_count = 0, timer;
 
-	spin_lock_irqsave(&diag_cntl_lock, flags);
-	if (ch == driver->ch_cntl)
-		proc_id = MODEM_PROC;
-	else if (ch == driver->chqdsp_cntl)
-		proc_id = QDSP_PROC;
-	if (ch == driver->ch_wcnss_cntl)
-		proc_id = WCNSS_PROC;
+	mutex_lock(&driver->diag_cntl_mutex);
 	for (i = 0; i < MAX_EQUIP_ID; i++) {
 		size = (ptr->num_items+7)/8;
 		/* reached null entry */
@@ -736,47 +771,12 @@ void diag_send_log_mask_update(smd_channel_t *ch, int equip_id)
 									 size);
 			if (ch) {
 				while (retry_count < 3) {
-					if (header_size + size <= 8) {
-						pr_alert("diag: Before write Incorrect log packet size %d being sent to proc %d for equip_id %d\n",
-								  header_size + size, proc_id, equip_id);
-						pr_alert("diag: header size = %d, size = %d", header_size, size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + size, 1);
-						pr_alert("\n");
-					}
-					if (driver->log_mask->data_len != (header_size + size - 8)) {
-						pr_alert("diag: Before write Incorrect log packet being sent to proc %d for equip_id %d\n",
-								  proc_id, equip_id);
-						pr_alert("diag: data_len = %d, header size = %d, size = %d", driver->log_mask->data_len, header_size, size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + size, 1);
-						pr_alert("\n");
-					}
 					wr_size = smd_write(ch, buf,
 							 header_size + size);
-					if (header_size + size <= 8) {
-						pr_alert("diag: After write Incorrect log packet size %d being sent to proc %d for equip_id %d\n",
-								  header_size + size, proc_id, equip_id);
-						pr_alert("diag: header size = %d, size = %d", header_size, size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + size, 1);
-						pr_alert("\n");
-					}
-					if (driver->log_mask->data_len != (header_size + size - 8)) {
-						pr_alert("diag: After write Incorrect log packet being sent to proc %d for equip_id %d\n",
-								  proc_id, equip_id);
-						pr_alert("diag: data_len = %d, header size = %d, size = %d", driver->log_mask->data_len, header_size, size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + size, 1);
-						pr_alert("\n");
-					}
 					if (wr_size == -ENOMEM) {
 						retry_count++;
-						for (kk = 0; kk < 5; kk++)
+						for (timer = 0; timer < 5;
+								 timer++)
 							udelay(2000);
 					} else
 						break;
@@ -793,28 +793,19 @@ void diag_send_log_mask_update(smd_channel_t *ch, int equip_id)
 		}
 		ptr++;
 	}
-	spin_unlock_irqrestore(&diag_cntl_lock, flags);
+	mutex_unlock(&driver->diag_cntl_mutex);
 }
 
 void diag_send_event_mask_update(smd_channel_t *ch, int num_bytes)
 {
 	void *buf = driver->buf_event_mask_update;
 	int header_size = sizeof(struct diag_ctrl_event_mask);
-	int wr_size = -ENOMEM, retry_count = 0;
-	unsigned long flags = 0;
-	void *temp_buf;
-	int kk, proc_id = -1;
+	int wr_size = -ENOMEM, retry_count = 0, timer;
 
-	spin_lock_irqsave(&diag_cntl_lock, flags);
-	if (ch == driver->ch_cntl)
-		proc_id = MODEM_PROC;
-	else if (ch == driver->chqdsp_cntl)
-		proc_id = QDSP_PROC;
-	if (ch == driver->ch_wcnss_cntl)
-		proc_id = WCNSS_PROC;
+	mutex_lock(&driver->diag_cntl_mutex);
 	if (num_bytes == 0) {
-		pr_info("diag: event mask not set yet, so no update\n");
-		spin_unlock_irqrestore(&diag_cntl_lock, flags);
+		pr_debug("diag: event mask not set yet, so no update\n");
+		mutex_unlock(&driver->diag_cntl_mutex);
 		return;
 	}
 	/* send event mask update */
@@ -828,44 +819,10 @@ void diag_send_event_mask_update(smd_channel_t *ch, int num_bytes)
 	memcpy(buf+header_size, driver->event_masks, num_bytes);
 	if (ch) {
 		while (retry_count < 3) {
-			if (header_size + num_bytes <= 8) {
-				pr_alert("diag: Before write Incorrect Event packet size %d being sent to proc %d\n",
-						  header_size + num_bytes, proc_id);
-				pr_alert("diag: header size = %d, bytes = %d", header_size, num_bytes);
-				pr_alert("diag: contents of corrupted packet\n");
-				temp_buf = buf;
-				print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + num_bytes, 1);
-				pr_alert("\n");
-			}
-			if (driver->event_mask->data_len != (header_size + num_bytes-8)) {
-				pr_alert("diag: Before write Incorrect Event packet being sent to proc %d\n", proc_id);
-				pr_alert("diag: data_len %d, header size = %d, bytes = %d", header_size, num_bytes, driver->event_mask->data_len);
-				pr_alert("diag: contents of corrupted packet\n");
-				temp_buf = buf;
-				print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + num_bytes, 1);
-				pr_alert("\n");
-			}
 			wr_size = smd_write(ch, buf, header_size + num_bytes);
-			if (header_size + num_bytes <= 8) {
-				pr_alert("diag: After write Incorrect Event packet size %d being sent to proc %d\n",
-						  header_size + num_bytes, proc_id);
-				pr_alert("diag: header size = %d, bytes = %d", header_size, num_bytes);
-				pr_alert("diag: contents of corrupted packet\n");
-				temp_buf = buf;
-				print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + num_bytes, 1);
-				pr_alert("\n");
-			}
-			if (driver->event_mask->data_len != (header_size + num_bytes-8)) {
-				pr_alert("diag: After write Incorrect Event packet being sent to proc %d\n", proc_id);
-				pr_alert("diag: data_len %d, header size = %d, bytes = %d", header_size, num_bytes, driver->event_mask->data_len);
-				pr_alert("diag: contents of corrupted packet\n");
-				temp_buf = buf;
-				print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + num_bytes, 1);
-				pr_alert("\n");
-			}
 			if (wr_size == -ENOMEM) {
 				retry_count++;
-				for (kk = 0; kk < 5; kk++)
+				for (timer = 0; timer < 5; timer++)
 					udelay(2000);
 			} else
 				break;
@@ -875,21 +832,18 @@ void diag_send_event_mask_update(smd_channel_t *ch, int num_bytes)
 					 wr_size, header_size + num_bytes);
 	} else
 		pr_err("diag: ch not valid for event update\n");
-	spin_unlock_irqrestore(&diag_cntl_lock, flags);
+	mutex_unlock(&driver->diag_cntl_mutex);
 }
 
 void diag_send_msg_mask_update(smd_channel_t *ch, int updated_ssid_first,
 						int updated_ssid_last, int proc)
 {
 	void *buf = driver->buf_msg_mask_update;
-	int first, last, size = -ENOMEM, retry_count = 0;
+	int first, last, size = -ENOMEM, retry_count = 0, timer;
 	int header_size = sizeof(struct diag_ctrl_msg_mask);
 	uint8_t *ptr = driver->msg_masks;
-	unsigned long flags = 0;
-	int mask_pkt_size, kk;
-	void *temp_buf;
 
-	spin_lock_irqsave(&diag_cntl_lock, flags);
+	mutex_lock(&driver->diag_cntl_mutex);
 	while (*(uint32_t *)(ptr + 4)) {
 		first = *(uint32_t *)ptr;
 		ptr += 4;
@@ -907,70 +861,36 @@ void diag_send_msg_mask_update(smd_channel_t *ch, int updated_ssid_first,
 			driver->msg_mask->msg_mode = 0; /* Legcay mode */
 			driver->msg_mask->ssid_first = first;
 			driver->msg_mask->ssid_last = last;
-			mask_pkt_size = 4*(driver->msg_mask->msg_mask_size);
 			memcpy(buf, driver->msg_mask, header_size);
-			memcpy(buf+header_size, ptr, mask_pkt_size);
-
+			memcpy(buf+header_size, ptr,
+				 4 * (driver->msg_mask->msg_mask_size));
 			if (ch) {
 				while (retry_count < 3) {
-					if (header_size + mask_pkt_size <= 8) {
-						pr_alert("diag: Before write Incorrect Msg packet size %d being sent to proc %d for ssid_first %d, ssid_last %d\n",
-								  header_size + mask_pkt_size, proc, first, last);
-						pr_alert("diag: header size = %d, mask pkt size = %d", header_size, mask_pkt_size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + mask_pkt_size, 1);
-						pr_alert("\n");
-					}
-					if (driver->msg_mask->data_len != (mask_pkt_size + header_size-8)) {
-						pr_alert("diag: Before write Incorrect Msg packet being sent to proc %d for ssid_first %d, ssid_last %d\n",
-								  proc, first, last);
-						pr_alert("diag: data_len = %d, header size = %d, mask pkt size = %d", driver->msg_mask->data_len, header_size, mask_pkt_size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + mask_pkt_size, 1);
-						pr_alert("\n");
-					}
-					size = smd_write(ch, buf, header_size + mask_pkt_size);
-					if (header_size + mask_pkt_size <= 8) {
-						pr_alert("diag: After write Incorrect Msg packet size %d being sent to proc %d for ssid_first %d, ssid_last %d\n",
-								  header_size + mask_pkt_size, proc, first, last);
-						pr_alert("diag: header size = %d, mask pkt size = %d", header_size, mask_pkt_size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + mask_pkt_size, 1);
-						pr_alert("\n");
-					}
-					if (driver->msg_mask->data_len != (mask_pkt_size + header_size-8)) {
-						pr_alert("diag: After write Incorrect Msg packet being sent to proc %d for ssid_first %d, ssid_last %d\n",
-								  proc, first, last);
-						pr_alert("diag: data_len = %d, header size = %d, mask pkt size = %d", driver->msg_mask->data_len, header_size, mask_pkt_size);
-						pr_alert("diag: contents of corrupted packet\n");
-						temp_buf = buf;
-						print_hex_dump(KERN_ALERT, "Data: ", 16, 1, DUMP_PREFIX_ADDRESS, temp_buf, header_size + mask_pkt_size, 1);
-						pr_alert("\n");
-					}
+					size = smd_write(ch, buf, header_size +
+					 4*(driver->msg_mask->msg_mask_size));
 					if (size == -ENOMEM) {
 						retry_count++;
-						for (kk = 0; kk < 5; kk++)
+						for (timer = 0; timer < 5;
+								 timer++)
 							udelay(2000);
 					} else
 						break;
 				}
 				if (size != header_size +
 					 4*(driver->msg_mask->msg_mask_size))
-					pr_err("diag:  msg mask update fail %d,"
-							" tried %d\n", size,
-			 header_size + 4*(driver->msg_mask->msg_mask_size));
+					pr_err("diag: proc %d, msg mask update "
+	 "fail %d, tried %d\n", proc, size,
+	 header_size + 4*(driver->msg_mask->msg_mask_size));
 				else
 					pr_debug("diag: sending mask update for"
-		" ssid first %d, last %d on PROC %d\n", first, last, proc);
+		"ssid first %d, last %d on PROC %d\n", first, last, proc);
 			} else
-				pr_err("diag: ch invalid msg mask update\n");
+				pr_err("diag: proc %d, ch invalid msg mask"
+						 "update\n", proc);
 		}
 		ptr += MAX_SSID_PER_RANGE*4;
 	}
-	spin_unlock_irqrestore(&diag_cntl_lock, flags);
+	mutex_unlock(&driver->diag_cntl_mutex);
 }
 
 static int diag_process_apps_pkt(unsigned char *buf, int len)
@@ -1028,13 +948,13 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 			*(int *)(driver->apps_rsp_buf + 4) = 0x0;
 			if (driver->ch_cntl)
 				diag_send_log_mask_update(driver->ch_cntl,
-								 *(int *)buf);
+								ALL_EQUIP_ID);
 			if (driver->chqdsp_cntl)
 				diag_send_log_mask_update(driver->chqdsp_cntl,
-								 *(int *)buf);
+								ALL_EQUIP_ID);
 			if (driver->ch_wcnss_cntl)
 				diag_send_log_mask_update(driver->ch_wcnss_cntl,
-								 *(int *)buf);
+								ALL_EQUIP_ID);
 			ENCODE_RSP_AND_SEND(7);
 			return 0;
 		} else
@@ -1239,7 +1159,8 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		driver->apps_rsp_buf[1] = 0x1;
 		driver->apps_rsp_buf[2] = 0x1;
 		driver->apps_rsp_buf[3] = 0x0;
-		*(int *)(driver->apps_rsp_buf + 4) = MSG_MASK_TBL_CNT;
+		/* -1 to un-account for OEM SSID range */
+		*(int *)(driver->apps_rsp_buf + 4) = MSG_MASK_TBL_CNT - 1;
 		*(uint16_t *)(driver->apps_rsp_buf + 8) = MSG_SSID_0;
 		*(uint16_t *)(driver->apps_rsp_buf + 10) = MSG_SSID_0_LAST;
 		*(uint16_t *)(driver->apps_rsp_buf + 12) = MSG_SSID_1;
@@ -1833,7 +1754,7 @@ void diagfwd_init(void)
 {
 	diag_debug_buf_idx = 0;
 	driver->read_len_legacy = 0;
-	spin_lock_init(&diag_cntl_lock);
+	mutex_init(&driver->diag_cntl_mutex);
 
 	if (driver->event_mask == NULL) {
 		driver->event_mask = kzalloc(sizeof(

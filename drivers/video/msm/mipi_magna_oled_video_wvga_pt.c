@@ -398,10 +398,10 @@ static int get_candela_index(int bl_level)
 	 * But in this driver, brightness is only supported from 0 to 24 */
 
 	switch (bl_level) {
-	case 0 ... 39:
+	case 0 ... 29:
 		backlightlevel = GAMMA_30CD; /* 0*/
 		break;
-	case 40 ... 49:
+	case 30 ... 49:
 		backlightlevel = GAMMA_40CD; /* 1 */
 		break;
 	case 50 ... 59:
@@ -413,11 +413,8 @@ static int get_candela_index(int bl_level)
 	case 70 ... 79:
 		backlightlevel = GAMMA_70CD; /* 4 */
 		break;
-	case 80 ... 89:
+	case 80 ... 99:
 		backlightlevel = GAMMA_80CD; /* 5 */
-		break;
-	case 90 ... 99:
-		backlightlevel = GAMMA_90CD; /* 6 */
 		break;
 	case 100 ... 109:
 		backlightlevel = GAMMA_100CD; /* 7 */
@@ -425,11 +422,17 @@ static int get_candela_index(int bl_level)
 	case 110 ... 119:
 		backlightlevel = GAMMA_110CD; /* 8 */
 		break;
-	case 120 ... 129:
+	case 120 ... 125:
 		backlightlevel = GAMMA_120CD; /* 9 */
 		break;
-	case 130 ... 139:
+	case 126 ... 129:
 		backlightlevel = GAMMA_130CD; /* 10 */
+		break;
+	case 130 ... 135:
+		backlightlevel = GAMMA_130CD; /* 10 */
+		break;
+	case 136 ... 139:
+		backlightlevel = GAMMA_140CD; /* 11 */
 		break;
 	case 140 ... 149:
 		backlightlevel = GAMMA_140CD; /* 11 */
@@ -455,11 +458,8 @@ static int get_candela_index(int bl_level)
 	case 210 ... 219:
 		backlightlevel = GAMMA_210CD; /* 18 */
 		break;
-	case 220 ... 229:
-		backlightlevel = GAMMA_220CD; /* 10 */
-		break;
-	case 230 ... 239:
-		backlightlevel = GAMMA_230CD; /* 20 */
+	case 220 ... 239:
+		backlightlevel = GAMMA_220CD; /* 19 */
 		break;
 	case 240 ... 249:
 		backlightlevel = GAMMA_240CD; /* 21 */
@@ -479,7 +479,6 @@ static int get_candela_index(int bl_level)
 	}
 	return backlightlevel;
 }
-
 
 
 static int set_acl_on_level(int bl_level)
@@ -691,9 +690,10 @@ static int __init mipi_cmd_samsung_oled_qhd_pt_init(void)
 	pinfo.mipi.stream = 0; /* dma_p */
 	pinfo.mipi.mdp_trigger = DSI_CMD_TRIGGER_SW;
 	pinfo.mipi.dma_trigger = DSI_CMD_TRIGGER_SW;
-	pinfo.mipi.frame_rate = 60;
+	pinfo.mipi.frame_rate = 56;
 	pinfo.mipi.force_clk_lane_hs = 1;
 	pinfo.mipi.dsi_phy_db = &dsi_video_mode_phy_db;
+	pinfo.mipi.esc_byte_ratio = 4;
 	ret = mipi_samsung_device_register(&pinfo, MIPI_DSI_PRIM,
 				MIPI_DSI_PANEL_WVGA_PT,
 				&mipi_pd);

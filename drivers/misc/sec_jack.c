@@ -36,8 +36,8 @@
 #define MAX_ZONE_LIMIT		10
 #if defined(CONFIG_MACH_AEGIS2)
 #define SEND_KEY_CHECK_TIME_MS	65
-#elif defined(CONFIG_MACH_K2_KDI)
-#define SEND_KEY_CHECK_TIME_MS	70
+#elif defined(CONFIG_MACH_M2_KDI)
+#define SEND_KEY_CHECK_TIME_MS  70
 #else
 #define SEND_KEY_CHECK_TIME_MS	60
 #endif
@@ -86,7 +86,7 @@ static void set_send_key_state(struct sec_jack_info *hi, int state)
 				input_sync(hi->input);
 				switch_set_state(&switch_sendend, state);
 				hi->send_key_pressed = state;
-				pr_debug(MODULE_NAME "%s: keycode=%d, is pressed\n",
+				pr_info(MODULE_NAME "%s: keycode=%d, is pressed\n",
 					__func__, btn_zones[i].code);
 				return;
 			}
@@ -182,10 +182,15 @@ static void determine_jack_type(struct sec_jack_info *hi)
 					pr_debug(MODULE_NAME "determine_jack_type %d, %d, %d\n",
 						zones[i].adc_high, count[i],
 						zones[i].check_count);
+#if defined(CONFIG_SAMSUNG_JACK_GNDLDET)
+					/* G plus L Detection */
+					if (!hi->pdata->get_gnd_jack_state()) {
+#else
 #ifndef CONFIG_MACH_JAGUAR
 					if (recheck_jack == true && i == 3) {
 #else
 					if (recheck_jack == true && i == 5) {
+#endif
 #endif
 						pr_debug(MODULE_NAME "something wrong connectoin!\n");
 						handle_jack_not_inserted(hi);
@@ -432,11 +437,6 @@ static void sec_jack_det_work_func(struct work_struct *work)
 		time_left_ms -= 10;
 	}
 
-#if defined(CONFIG_SAMSUNG_JACK_GNDLDET)
-	/* G plus L Detection */
-	if (!hi->pdata->get_l_jack_state())
-		return;
-#endif
 	/* set mic bias to enable adc */
 	pdata->set_micbias_state(true);
 
@@ -480,7 +480,7 @@ static int sec_jack_probe(struct platform_device *pdev)
 			!pdata->set_micbias_state ||
 			pdata->num_zones > MAX_ZONE_LIMIT
 #if defined(CONFIG_SAMSUNG_JACK_GNDLDET)
-			|| !pdata->get_l_jack_state
+			|| !pdata->get_gnd_jack_state
 #endif
 		) {
 		pr_err("%s : need to check pdata\n", __func__);
@@ -576,24 +576,6 @@ static int sec_jack_probe(struct platform_device *pdev)
 		goto err_enable_irq_wake;
 	}
 
-#ifdef CONFIG_SAMSUNG_JACK_GNDLDET_KOR
-	ret = request_threaded_irq(pdata->g_det_int, NULL,
-			sec_jack_det_irq_handler,
-			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
-			IRQF_ONESHOT, "sec_headset_g_detect", hi);
-
-	if (ret) {
-		pr_err("%s : Failed to request_irq.\n", __func__);
-		goto err_request_detect_irq;
-	}
-
-	/* to handle insert/removal when we're sleeping in a call */
-	ret = enable_irq_wake(pdata->g_det_int);
-	if (ret) {
-		pr_err("%s : Failed to enable_irq_wake.\n", __func__);
-		goto err_enable_irq_wake;
-	}
-#endif
 	INIT_WORK(&hi->sendkey_work, sec_jack_send_key_work_func);
 
 	ret = request_threaded_irq(pdata->send_int, NULL,
@@ -623,14 +605,8 @@ static int sec_jack_probe(struct platform_device *pdev)
 
 err_request_send_key_irq:
 	disable_irq_wake(pdata->det_int);
-#ifdef CONFIG_SAMSUNG_JACK_GNDLDET_KOR
-	disable_irq_wake(pdata->g_det_int);
-#endif
 err_enable_irq_wake:
 	free_irq(pdata->det_int, hi);
-#ifdef CONFIG_SAMSUNG_JACK_GNDLDET_KOR
-	free_irq(pdata->g_det_int, hi);
-#endif
 err_request_detect_irq:
 	wake_lock_destroy(&hi->det_wake_lock);
 	switch_dev_unregister(&switch_jack_detection);
@@ -659,11 +635,6 @@ static int sec_jack_remove(struct platform_device *pdev)
 	free_irq(hi->pdata->send_int, hi);
 	disable_irq_wake(hi->pdata->det_int);
 	free_irq(hi->pdata->det_int, hi);
-#ifdef CONFIG_SAMSUNG_JACK_GNDLDET_KOR
-	disable_irq_wake(hi->pdata->g_det_int);
-	free_irq(hi->pdata->g_det_int, hi);
-#endif
-
 	wake_lock_destroy(&hi->det_wake_lock);
 	switch_dev_unregister(&switch_jack_detection);
 	switch_dev_unregister(&switch_sendend);

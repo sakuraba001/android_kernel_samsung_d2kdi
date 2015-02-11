@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -44,7 +44,7 @@ static struct dsi_cmd_desc novatek_cmd_backlight_cmds[] = {
 	defined(CONFIG_FB_MSM_MIPI_NOVATEK_BOE_CMD_WVGA_PT)
 static struct mipi_novatek_driver_data msd;
 int is_lcd_connected = 1;
-
+struct dcs_cmd_req cmdreq;
 
 
 static char manufacture_id1[2] = {0xDA, 0x00}; /* DTYPE_DCS_READ */
@@ -154,16 +154,28 @@ static int mipi_novatek_disp_send_cmd(struct msm_fb_data_type *mfd,
 		goto unknown_command;
 
 	if (lock) {
-		/* mdp4_dsi_cmd_busy_wait: will turn on dsi clock also */
-		mdp4_dsi_cmd_dma_busy_wait(mfd);
-		mdp4_dsi_blt_dmap_busy_wait(mfd);
-		mipi_dsi_mdp_busy_wait(mfd);
-
-		mipi_dsi_cmds_tx(mfd, &msd.novatek_tx_buf, cmd_desc, cmd_size);
+		cmdreq.cmds = cmd_desc;
+		cmdreq.cmds_cnt = cmd_size;
+		cmdreq.flags = CMD_REQ_COMMIT;
+		cmdreq.rlen = 0;
+		cmdreq.cb = NULL;
+		mipi_dsi_cmdlist_put(&cmdreq);
 
 		mutex_unlock(&mfd->dma->ov_mutex);
 	} else {
-		mipi_dsi_cmds_tx(mfd, &msd.novatek_tx_buf, cmd_desc, cmd_size);
+#if 1
+		printk("%s : mipi_dsi_cmds_tx(cmd(%d)/cmdsize(%d)) - nolock\n", __func__, cmd, cmd_size);
+		mipi_dsi_cmds_tx(&msd.novatek_tx_buf, cmd_desc, cmd_size);
+#else //KUOGEE
+		cmdreq.cmds = cmd_desc;
+		cmdreq.cmds_cnt = cmd_size;
+		cmdreq.flags = CMD_REQ_COMMIT;
+		cmdreq.rlen = 0;
+		cmdreq.cb = NULL;
+
+		printk("%s : mipi_dsi_cmdlist_put(cmd(%d)/cmdsize(%d)) - nolock\n", __func__, cmd, cmd_size);
+		mipi_dsi_cmdlist_put(&cmdreq);
+#endif
 	}
 
 	return 0;
@@ -446,7 +458,7 @@ static uint32 mipi_novatek_manufacture_id(struct msm_fb_data_type *mfd)
 	cmd = &novatek_manufacture_id_cmd;
 	mipi_dsi_cmds_rx(mfd, tp, rp, cmd, 3);
 	lp = (uint32 *)rp->data;
-	pr_info("%s: manufacture_id=%x", __func__, *lp);
+	pr_info("%s: manufacture_id=%x\n", __func__, *lp);
 	return *lp;
 }
 
@@ -527,14 +539,14 @@ static int mipi_novatek_lcd_on(struct platform_device *pdev)
 	mipi  = &mfd->panel_info.mipi;
 
 	if (mipi->mode == DSI_VIDEO_MODE) {
-		mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_video_on_cmds,
-			ARRAY_SIZE(novatek_video_on_cmds));
+		mipi_dsi_cmds_tx(&novatek_tx_buf, novatek_video_on_cmds,
+				ARRAY_SIZE(novatek_video_on_cmds));
 	} else {
-		mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_cmd_on_cmds,
-			ARRAY_SIZE(novatek_cmd_on_cmds));
+		mipi_dsi_cmds_tx(&novatek_tx_buf, novatek_cmd_on_cmds,
+				ARRAY_SIZE(novatek_cmd_on_cmds));
 
-		mipi_dsi_cmd_bta_sw_trigger(); /* clean up ack_err_status */
-
+		/* clean up ack_err_status */
+		mipi_dsi_cmd_bta_sw_trigger();
 		mipi_novatek_manufacture_id(mfd);
 	}
 
@@ -552,13 +564,31 @@ static int mipi_novatek_lcd_off(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
-	mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_display_off_cmds,
+	mipi_dsi_cmds_tx(&novatek_tx_buf, novatek_display_off_cmds,
 			ARRAY_SIZE(novatek_display_off_cmds));
 
 	return 0;
 }
+#if 0 /*test function*/
+static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_WRITE1 */
+static struct dsi_cmd_desc backlight_cmd = {
+	DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(led_pwm1), led_pwm1};
 
 
+static void mipi_novatek_set_backlight(struct msm_fb_data_type *mfd)
+{
+	led_pwm1[1] = (unsigned char)mfd->bl_level;
+
+	cmdreq.cmds = &backlight_cmd;
+	cmdreq.cmds_cnt = 1;
+	cmdreq.flags = 0;
+	cmdreq.flags = CMD_REQ_COMMIT;
+	cmdreq.rlen = 0;
+	cmdreq.cb = NULL;
+
+	mipi_dsi_cmdlist_put(&cmdreq);
+}
+#else
 
 static void mipi_novatek_set_backlight(struct msm_fb_data_type *mfd)
 {
@@ -569,23 +599,10 @@ static void mipi_novatek_set_backlight(struct msm_fb_data_type *mfd)
 	if (bl_level_old == mfd->bl_level)
 		return;
 
-	mutex_lock(&mfd->dma->ov_mutex);
-	if (mdp4_overlay_dsi_state_get() <= ST_DSI_SUSPEND) {
-		mutex_unlock(&mfd->dma->ov_mutex);
-		return;
-	}
-	/* mdp4_dsi_cmd_busy_wait: will turn on dsi clock also */
-	mdp4_dsi_cmd_dma_busy_wait(mfd);
-	mdp4_dsi_blt_dmap_busy_wait(mfd);
-	mipi_dsi_mdp_busy_wait(mfd);
-
-	led_pwm1[1] = (unsigned char)(mfd->bl_level);
-	mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_cmd_backlight_cmds,
-			ARRAY_SIZE(novatek_cmd_backlight_cmds));
+	mdp4_backlight_put_level(0, mfd->bl_level);
 	bl_level_old = mfd->bl_level;
-	mutex_unlock(&mfd->dma->ov_mutex);
-	return;
 }
+#endif
 
 static int mipi_dsi_3d_barrier_sysfs_register(struct device *dev);
 static int barrier_mode;
@@ -596,6 +613,7 @@ static int __devinit mipi_novatek_lcd_probe(struct platform_device *pdev)
 	struct mipi_panel_info *mipi;
 	struct platform_device *current_pdev;
 	static struct mipi_dsi_phy_ctrl *phy_settings;
+	static char dlane_swap;
 
 	if (pdev->id == 0) {
 		mipi_novatek_pdata = pdev->dev.platform_data;
@@ -603,6 +621,11 @@ static int __devinit mipi_novatek_lcd_probe(struct platform_device *pdev)
 		if (mipi_novatek_pdata
 			&& mipi_novatek_pdata->phy_ctrl_settings) {
 			phy_settings = (mipi_novatek_pdata->phy_ctrl_settings);
+		}
+
+		if (mipi_novatek_pdata
+			&& mipi_novatek_pdata->dlane_swap) {
+			dlane_swap = (mipi_novatek_pdata->dlane_swap);
 		}
 
 		if (mipi_novatek_pdata
@@ -634,6 +657,9 @@ static int __devinit mipi_novatek_lcd_probe(struct platform_device *pdev)
 
 		if (phy_settings != NULL)
 			mipi->dsi_phy_db = phy_settings;
+
+		if (dlane_swap)
+			mipi->dlane_swap = dlane_swap;
 	}
 
 	return 0;
@@ -778,6 +804,21 @@ static int mipi_novatek_lcd_init(void)
 #if defined(CONFIG_FB_MSM_MIPI_NOVATEK_CMD_WVGA_PT) || \
 	defined(CONFIG_FB_MSM_MIPI_NOVATEK_BOE_CMD_WVGA_PT)
 
+#if defined(CONFIG_FB_MSM_MIPI_CMD_PANEL_VSYNC)
+void mipi_novatek_disp_on_cmd(struct msm_fb_data_type *mfd)
+{
+	struct mipi_panel_info *mipi;
+
+	mipi = &mfd->panel_info.mipi;
+	if (mfd->display_on_status == MIPI_SUSPEND_STATE) {
+		if (mipi->mode == DSI_CMD_MODE) {
+			mipi_novatek_disp_send_cmd(mfd, PANEL_ON, true);
+			mfd->display_on_status = MIPI_RESUME_STATE;
+			pr_info("%s status : %d ", __func__, mfd->display_on_status);
+		}
+	}
+}
+#endif
 
 static int mipi_novatek_disp_on(struct platform_device *pdev)
 {
@@ -922,10 +963,8 @@ static void mipi_novatek_disp_set_backlight(struct msm_fb_data_type *mfd)
 		mfd->resume_state == MIPI_SUSPEND_STATE)
 		goto end;
 	mutex_lock(&mfd->dma->ov_mutex);
-	/* mdp4_dsi_cmd_busy_wait: will turn on dsi clock also */
-	mdp4_dsi_cmd_dma_busy_wait(mfd);
-	mdp4_dsi_blt_dmap_busy_wait(mfd);
-	mipi_dsi_mdp_busy_wait(mfd);
+	
+	mipi_dsi_mdp_busy_wait();
 
 #ifdef CONFIG_FB_MSM_BACKLIGHT_AAT1402IUQ
 	/*
@@ -938,8 +977,14 @@ static void mipi_novatek_disp_set_backlight(struct msm_fb_data_type *mfd)
 	led_pwm1[1] = (unsigned char)
 		(msd.mpd->set_brightness_level(mfd->bl_level));
 #endif
-	mipi_dsi_cmds_tx(mfd, &msd.novatek_tx_buf, novatek_cmd_backlight_cmds,
-			ARRAY_SIZE(novatek_cmd_backlight_cmds));
+	cmdreq.cmds = &novatek_cmd_backlight_cmds;
+	cmdreq.cmds_cnt = ARRAY_SIZE(novatek_cmd_backlight_cmds);
+	cmdreq.flags = CMD_REQ_COMMIT;
+	cmdreq.rlen = 0;
+	cmdreq.cb = NULL;
+
+	printk("%s : mipi_dsi_cmdlist_put(cnt=%d) \n", __func__, cmdreq.cmds_cnt);
+	mipi_dsi_cmdlist_put(&cmdreq);
 	bl_level_old = mfd->bl_level;
 	mutex_unlock(&mfd->dma->ov_mutex);
 end:

@@ -1,3 +1,5 @@
+CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
+
 obj-y += io.o dma.o memory.o
 ifndef CONFIG_ARM_ARCH_TIMER
 obj-y += timer.o
@@ -70,6 +72,7 @@ obj-$(CONFIG_MSM_PIL_QDSP6V3) += pil-q6v3.o
 obj-$(CONFIG_MSM_PIL_QDSP6V4) += pil-q6v4.o
 obj-$(CONFIG_MSM_PIL_RIVA) += pil-riva.o
 obj-$(CONFIG_MSM_PIL_TZAPPS) += pil-tzapps.o
+obj-$(CONFIG_MSM_PIL_VIDC) += pil-vidc.o
 obj-$(CONFIG_MSM_PIL_MODEM) += pil-modem.o
 obj-$(CONFIG_ARCH_QSD8X50) += sirc.o
 obj-$(CONFIG_ARCH_FSM9XXX) += sirc-fsm9xxx.o
@@ -189,6 +192,9 @@ ifdef CONFIG_CPU_IDLE
 	obj-$(CONFIG_ARCH_MSM9615) += cpuidle.o
 endif
 
+ifdef CONFIG_MSM_CAMERA_V4L2
+	obj-$(CONFIG_ARCH_MSM8X60) += board-msm8x60-camera.o
+endif
 obj-$(CONFIG_ARCH_FSM9XXX) += devices-fsm9xxx.o
 obj-$(CONFIG_ARCH_FSM9XXX) += clock-fsm9xxx.o clock-local.o acpuclock-fsm9xxx.o
 obj-$(CONFIG_ARCH_FSM9XXX) += dfe-fsm9xxx.o rfic-fsm9xxx.o
@@ -254,7 +260,7 @@ obj-$(CONFIG_MACH_M2_SPR) += board-m2_spr.o board-m2_spr-gpiomux.o
 obj-$(CONFIG_MACH_M2_ATT) += board-m2_att.o board-m2_att-gpiomux.o
 obj-$(CONFIG_MACH_M2_SKT) += board-m2_skt.o board-m2_skt-gpiomux.o
 obj-$(CONFIG_MACH_M2_DCM) += board-m2_dcm.o board-m2_dcm-gpiomux.o
-obj-$(CONFIG_MACH_K2_KDI) += board-k2_kdi.o board-k2_kdi-gpiomux.o
+obj-$(CONFIG_MACH_M2_KDI) += board-m2_kdi.o board-m2_kdi-gpiomux.o
 obj-$(CONFIG_MACH_AEGIS2) += board-aegis2.o board-aegis2-gpiomux.o
 obj-$(CONFIG_MACH_ACCELERATE) += board-accelerate.o board-accelerate-gpiomux.o
 obj-$(CONFIG_MACH_COMANCHE) += board-comanche.o board-comanche-gpiomux.o
@@ -285,7 +291,7 @@ obj-$(CONFIG_MACH_M2_SPR) += board-msm8960-common-all.o board-mms-tsp.o
 obj-$(CONFIG_MACH_M2_ATT) += board-msm8960-common-all.o board-mms-tsp.o
 obj-$(CONFIG_MACH_M2_SKT) += board-msm8960-common-all.o board-mms-tsp.o
 obj-$(CONFIG_MACH_M2_DCM) += board-msm8960-common-all.o board-mms-tsp.o
-obj-$(CONFIG_MACH_K2_KDI) += board-msm8960-common-all.o board-mms-tsp.o
+obj-$(CONFIG_MACH_M2_KDI) += board-msm8960-common-all.o board-mms-tsp.o
 obj-$(CONFIG_MACH_STRETTO) += board-msm8960-common-all.o board-mms-tsp.o
 obj-$(CONFIG_MACH_SUPERIORLTE_SKT) += board-msm8960-common-all.o board-mms-tsp.o
 

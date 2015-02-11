@@ -71,7 +71,6 @@ obj-$(CONFIG_TOUCHSCREEN_CY8C_TS)	+= cy8c_ts.o
 obj-$(CONFIG_TOUCHSCREEN_CYTTSP_I2C)       += cyttsp-i2c.o
 obj-$(CONFIG_TOUCHSCREEN_MMS144)        += mms_ts_144.o
 obj-$(CONFIG_TOUCHSCREEN_MMS136)        += mms_ts_136.o
-obj-$(CONFIG_TOUCHSCREEN_MMS134S)        += mms_ts_134S.o
 obj-$(CONFIG_TOUCHSCREEN_MMS136_TABLET)	+= mms_ts_136_tablet.o
 obj-$(CONFIG_TOUCHSCREEN_MXT224)	+= mxt224e.o
 obj-$(CONFIG_TOUCHSCREEN_MXT224S)        += mxt224s.o

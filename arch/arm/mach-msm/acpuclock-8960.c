@@ -1344,18 +1344,15 @@ static unsigned int calculate_vdd_dig(struct acpu_level *tgt)
 	return max(tgt->l2_level->vdd_dig, pll_vdd_dig);
 }
 
+#define BOOST_UV 25000
+
+static unsigned boost_uv;
+static bool enable_boost;
+module_param_named(boost, enable_boost, bool, S_IRUGO | S_IWUSR);
+
 static unsigned int calculate_vdd_core(struct acpu_level *tgt)
 {
-	unsigned int pll_vdd_core;
-
-	if (tgt->speed.src != HFPLL)
-		pll_vdd_core = 0;
-	else if (tgt->speed.pll_l_val > HFPLL_LOW_VDD_PLL_L_MAX)
-		pll_vdd_core = HFPLL_NOMINAL_VDD;
-	else
-		pll_vdd_core = HFPLL_LOW_VDD;
-
-	return max(tgt->vdd_core, pll_vdd_core);
+	return tgt->vdd_core + (enable_boost ? boost_uv : 0);
 }
 
 /* Set the CPU's clock rate and adjust the L2 rate, if appropriate. */
@@ -1706,56 +1703,56 @@ static struct acpu_level * __init select_freq_plan(void)
 
 		pr_alert("ACPU PVS:[%d],FMAX[%d]\n", pvs, fmax);
 		switch (pvs) {
-		case 0x0:
-		case 0x7:
-			v1 = acpu_freq_tbl_8960_kraitv1_slow;
-			v2 = acpu_freq_tbl_8960_kraitv2_slow;
-			break;
-		case 0x1:
-			v1 = acpu_freq_tbl_8960_kraitv1_nom_fast;
-			v2 = acpu_freq_tbl_8960_kraitv2_nom;
-			break;
-		case 0x3:
-			switch (fmax) {
-			case 0x1:
+			case 0x0:
+			case 0x7:
+				pr_alert("ACPU PVS: Slow(L%d)\n",
+					pvs_leakage);
 				v1 = acpu_freq_tbl_8960_kraitv1_slow;
-				v2 = acpu_freq_tbl_8960_kraitv2_fast;
+				v2 = acpu_freq_tbl_8960_kraitv2_slow;
 				break;
-			case 0x2:
-				v1 = acpu_freq_tbl_8960_kraitv1_slow;
-				v2 = acpu_freq_tbl_8960_kraitv2_fast;
+			case 0x1:
+				pr_alert("ACPU PVS: Nominal(L%d)\n",
+					pvs_leakage);
+				v1 = acpu_freq_tbl_8960_kraitv1_nom_fast;
+				v2 = acpu_freq_tbl_8960_kraitv2_nom;
 				break;
 			case 0x3:
-				v1 = acpu_freq_tbl_8960_kraitv1_slow;
-				/* It'll be considered to use
-				 * the acpu_freq_tbl_8960_kraitv2_f3 table */
-				v2 = acpu_freq_tbl_8960_kraitv2_fast;
+				switch (fmax) {
+					case 0x1:
+						pr_alert("ACPU PVS: Fast1(L%d)\n",
+							pvs_leakage);
+						v1 = acpu_freq_tbl_8960_kraitv1_slow;
+						v2 = acpu_freq_tbl_8960_kraitv2_fast;
+						break;
+					case 0x2:
+						pr_alert("ACPU PVS: Fast2(L%d)\n",
+							pvs_leakage);
+						v1 = acpu_freq_tbl_8960_kraitv1_slow;
+						v2 = acpu_freq_tbl_8960_kraitv2_fast;
+						break;
+					case 0x3:
+						pr_alert("ACPU PVS: Fast3(L%d)\n",
+							pvs_leakage);
+						v1 = acpu_freq_tbl_8960_kraitv1_slow;
+							v2 = acpu_freq_tbl_8960_kraitv2_f3;
+						break;
+					default:
+						pr_info("ACPU PVS: Fast\n");
+						v1 = acpu_freq_tbl_8960_kraitv1_nom_fast;
+						v2 = acpu_freq_tbl_8960_kraitv2_fast;
+						break;
+				}
 				break;
 			default:
-				v1 = acpu_freq_tbl_8960_kraitv1_nom_fast;
-				v2 = acpu_freq_tbl_8960_kraitv2_fast;
-				break;
-			}
-			break;
-		default:
+				pr_warn("ACPU PVS: Unknown. Defaulting to slow.\n");
 				v1 = acpu_freq_tbl_8960_kraitv1_slow;
 				v2 = acpu_freq_tbl_8960_kraitv2_slow;
 				break;
 		}
 #ifdef CONFIG_SEC_L1_DCACHE_PANIC_CHK
-		if ((pvs == 0x3) && (global_sec_pvs_value == 0xfafa)) {
-			v2 = acpu_freq_tbl_8960_kraitv2_nom;
-		} else if ((pvs == 0x1) && (fmax == 0)
-					&& (global_sec_pvs_value == 0xfafa)) {
-			v2 = acpu_freq_tbl_8960_kraitv2_slow;
-		}
-
-/* The below code shoud be applied
- * after tested with mass-devices. */
-/*
 #if defined(CONFIG_MSM_DCVS_FOR_MSM8260A)
 		if (((pvs == 0x3) && (global_sec_pvs_value == 0xfafa))
-				|| ((pvs == 0x1) && (fmax == 0x0)
+				|| ((pvs == 0x1) && (fmax != 0x1)
 					&& (global_sec_pvs_value == 0xfafa))) {
 #else
 		if (((pvs == 0x3) && (global_sec_pvs_value == 0xfafa))
@@ -1765,7 +1762,6 @@ static struct acpu_level * __init select_freq_plan(void)
 			pr_alert("ACPU PVS: pvs[%d]:fmax[%d]-r\n", pvs, fmax);
 			boost_vdd_core(v2);
 		}
-*/
 #endif
 		scalable = scalable_8960;
 		if (cpu_is_krait_v1()) {
@@ -1803,7 +1799,7 @@ static struct acpu_level * __init select_freq_plan(void)
 		if (l->use_for_scaling)
 			max_acpu_level = l;
 	BUG_ON(!max_acpu_level);
-	pr_info("ACPU MFR:[%u]\n", max_acpu_level->speed.khz);
+	pr_info("Max ACPU freq: %u KHz\n", max_acpu_level->speed.khz);
 
 	return max_acpu_level;
 }

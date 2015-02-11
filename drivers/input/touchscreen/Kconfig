@@ -126,18 +126,6 @@ config TOUCHSCREEN_MMS136
 	  To compile this driver as a module, choose M here: the
 	  module will be called mms_ts.
 
-config TOUCHSCREEN_MMS134S
-        tristate "Melfas MMS134S Touchscreen"
-        depends on I2C
-        help
-          Say Y here if you have Melfas MMS136 series I2C touchscreen,
-           connected to your system.
-
-          If unsure, say N.
-
-          To compile this driver as a module, choose M here: the
-          module will be called mms_ts.
-
 config TOUCHSCREEN_MMS136_TABLET
 	tristate "Melfas MMS136 Touchscreen at table model"
 	depends on I2C

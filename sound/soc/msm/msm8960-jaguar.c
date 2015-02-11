@@ -35,6 +35,7 @@
 /* 8960 machine driver */
 
 #define PM8921_GPIO_BASE		NR_GPIO_IRQS
+#define PM8921_IRQ_BASE (NR_MSM_IRQS + NR_GPIO_IRQS)
 #define PM8921_GPIO_PM_TO_SYS(pm_gpio)  (pm_gpio - 1 + PM8921_GPIO_BASE)
 
 #define MSM8960_SPK_ON 1
@@ -77,6 +78,10 @@
 #define BOARD_REV16 (BOARD_REV15 + 1)
 #endif
 
+#define JACK_DETECT_GPIO 38
+#define JACK_DETECT_INT PM8921_GPIO_IRQ(PM8921_IRQ_BASE, JACK_DETECT_GPIO)
+#define GPIO_DETECT_USED false
+
 #if defined(CONFIG_MACH_APEXQ)
 static u32 top_spk_pamp_gpio;
 #else
@@ -109,7 +114,21 @@ static struct snd_soc_jack button_jack;
 static struct snd_soc_jack volumedown_jack;
 static struct snd_soc_jack volumeup_jack;
 
-static void *tabla_mbhc_cal;
+static int msm8960_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
+					bool dapm);
+
+static struct tabla_mbhc_config mbhc_cfg = {
+	.headset_jack = &hs_jack,
+	.button_jack = &button_jack,
+	.read_fw_bin = false,
+	.calibration = NULL,
+	.micbias = TABLA_MICBIAS2,
+	.mclk_cb_fn = msm8960_enable_codec_ext_clk,
+	.mclk_rate = TABLA_EXT_CLK_RATE,
+	.gpio = 0,
+	.gpio_irq = 0,
+	.gpio_level_insert = 1,
+};
 
 static int msm8960_i2s_rx_ch = 1;
 static int msm8960_i2s_tx_ch = 1;
@@ -199,7 +218,7 @@ static void msm8960_ext_spk_power_amp_on(u32 spk)
 
 			schedule_delayed_work(
 			&ext_amp_dwork.dwork,
-			msecs_to_jiffies(10));
+			msecs_to_jiffies(50));
 		}
 	} else  {
 
@@ -339,8 +358,7 @@ static int msm8960_ear_switch_event(struct snd_soc_dapm_widget *w,
 }
 #endif
 
-#if defined(CONFIG_MACH_ESPRESSO10_ATT) || defined(CONFIG_MACH_ESPRESSO10_VZW) \
-	|| defined(CONFIG_MACH_ESPRESSO10_SPR)
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 static int msm8960_lineout_switch_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *k, int event)
 {
@@ -352,9 +370,10 @@ static int msm8960_lineout_switch_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 #endif
+static struct mutex cdc_mclk_mutex;
 
-int msm8960_enable_codec_ext_clk(
-		struct snd_soc_codec *codec, int enable)
+static int msm8960_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
+		bool dapm)
 {
 	int r = 0;
 	pr_debug("%s: enable = %d\n", __func__, enable);
@@ -367,7 +386,7 @@ int msm8960_enable_codec_ext_clk(
 			if (codec_clk) {
 				clk_set_rate(codec_clk, TABLA_EXT_CLK_RATE);
 				clk_enable(codec_clk);
-				tabla_mclk_enable(codec, 1);
+				tabla_mclk_enable(codec, 1, dapm);
 			} else {
 				pr_err("%s: Error setting Tabla MCLK\n",
 					__func__);
@@ -382,8 +401,8 @@ int msm8960_enable_codec_ext_clk(
 			 clk_users);
 			if (clk_users == 0) {
 				pr_debug("%s: disabling MCLK. clk_users = %d\n",
-					__func__, clk_users);
-				tabla_mclk_enable(codec, 0);
+						__func__, clk_users);
+				tabla_mclk_enable(codec, 0, dapm);
 				clk_disable(codec_clk);
 				clk_put(codec_clk);
 			}
@@ -404,9 +423,9 @@ static int msm8960_mclk_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		return msm8960_enable_codec_ext_clk(w->codec, 1);
+		return msm8960_enable_codec_ext_clk(w->codec, 1, true);
 	case SND_SOC_DAPM_POST_PMD:
-		return msm8960_enable_codec_ext_clk(w->codec, 0);
+		return msm8960_enable_codec_ext_clk(w->codec, 0, true);
 	}
 	return 0;
 }
@@ -421,8 +440,7 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SPK("Ext Spk Top Pos", msm8960_spkramp_event),
 	SND_SOC_DAPM_SPK("Ext Spk Top Neg", msm8960_spkramp_event),
-#if defined(CONFIG_MACH_ESPRESSO10_ATT) || defined(CONFIG_MACH_ESPRESSO10_VZW) \
-	|| defined(CONFIG_MACH_ESPRESSO10_SPR)
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 	SND_SOC_DAPM_SPK("LINEOUT Switch", msm8960_lineout_switch_event),
 #endif
 	SND_SOC_DAPM_MIC("Handset Mic", NULL),
@@ -480,8 +498,7 @@ static const struct snd_soc_dapm_route common_audio_map[] = {
 
 	{"Ext Spk Top Pos", NULL, "LINEOUT2"},
 	{"Ext Spk Top Neg", NULL, "LINEOUT4"},
-#if defined(CONFIG_MACH_ESPRESSO10_ATT) || defined(CONFIG_MACH_ESPRESSO10_VZW) \
-	|| defined(CONFIG_MACH_ESPRESSO10_SPR)
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 	/*
 	 * ESPRESSO10_ATT has analog switch for
 	 * reducing the pop noise on dock path
@@ -1000,11 +1017,8 @@ static int msm8960_i2s_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_jack_set_key(volumedown_jack.jack,
 			SND_JACK_BTN_2, KEY_VOLUMEDOWN);
 
-	tabla_hs_detect(codec, &hs_jack, &button_jack,
-			&volumeup_jack, &volumedown_jack,
-			tabla_mbhc_cal, TABLA_MICBIAS2,
-			msm8960_enable_codec_ext_clk, 0,
-			TABLA_EXT_CLK_RATE);
+			tabla_hs_detect(codec, &mbhc_cfg);
+
 
 	return 0;
 }
@@ -1014,6 +1028,14 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	int err;
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
+
+	struct pm_gpio jack_gpio_cfg = {
+		.direction = PM_GPIO_DIR_IN,
+		.pull = PM_GPIO_PULL_UP_1P5,
+		.function = PM_GPIO_FUNC_NORMAL,
+		.vin_sel = 2,
+		.inv_int_pol = 0,
+	};
 
 	pr_debug("%s()\n", __func__);
 
@@ -1100,11 +1122,21 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 			&& !machine_is_ESPRESSO_SPR()
 		&& !machine_is_APEXQ())) {
 		/* using mbhc driver for earjack */
-		tabla_hs_detect(codec, &hs_jack, &button_jack,
-				&volumeup_jack, &volumedown_jack,
-				tabla_mbhc_cal, TABLA_MICBIAS2,
-				msm8960_enable_codec_ext_clk, 0,
-				TABLA_EXT_CLK_RATE);
+		if (GPIO_DETECT_USED) {
+			mbhc_cfg.gpio = PM8921_GPIO_PM_TO_SYS(JACK_DETECT_GPIO);
+			mbhc_cfg.gpio_irq = JACK_DETECT_INT;
+		}
+		
+		if (mbhc_cfg.gpio) {
+			err = pm8xxx_gpio_config(mbhc_cfg.gpio, &jack_gpio_cfg);
+			if (err) {
+				pr_err("%s: pm8xxx_gpio_config failed %d\n", __func__,
+					   err);
+				return err;
+			}
+		}
+		err = tabla_hs_detect(codec, &mbhc_cfg);
+
 	}
 
 	return 0;
@@ -2012,8 +2044,7 @@ else
 	}
 #endif
 
-#if defined(CONFIG_MACH_ESPRESSO10_ATT) || defined(CONFIG_MACH_ESPRESSO10_VZW) \
-	|| defined(CONFIG_MACH_ESPRESSO10_SPR)
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 	ret = gpio_request(GPIO_CRADLE_SW_EN, "CRADLE_SW_EN");
 	if (ret) {
 		pr_err("%s: Failed to request gpio %d\n", __func__,
@@ -2037,8 +2068,7 @@ static void msm8960_free_headset_mic_gpios(void)
 		gpio_free(PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_USEURO_SWITCH));
 		gpio_free(top_spk_pamp_gpio);
 		gpio_free(bottom_spk_pamp_gpio);
-#if defined(CONFIG_MACH_ESPRESSO10_ATT) || defined(CONFIG_MACH_ESPRESSO10_VZW) \
-	|| defined(CONFIG_MACH_ESPRESSO10_SPR)
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 		gpio_free(GPIO_CRADLE_SW_EN);
 #endif
 	}
@@ -2065,16 +2095,18 @@ static int __init msm8960_audio_init(void)
 					ARRAY_SIZE(msm8960_i2s_be_dai);
 	}
 
-	tabla_mbhc_cal = def_tabla_mbhc_cal();
-	if (!tabla_mbhc_cal) {
+	mbhc_cfg.calibration = def_tabla_mbhc_cal();
+	if (!mbhc_cfg.calibration) {
 		pr_err("Calibration data allocation failed\n");
+		kfree(msm8960_dai_list);
 		return -ENOMEM;
 	}
 
 	msm8960_snd_device = platform_device_alloc("soc-audio", 0);
 	if (!msm8960_snd_device) {
 		pr_err("Platform device allocation failed\n");
-		kfree(tabla_mbhc_cal);
+		kfree(mbhc_cfg.calibration);
+		kfree(msm8960_dai_list);
 		return -ENOMEM;
 	}
 
@@ -2082,7 +2114,8 @@ static int __init msm8960_audio_init(void)
 	ret = platform_device_add(msm8960_snd_device);
 	if (ret) {
 		platform_device_put(msm8960_snd_device);
-		kfree(tabla_mbhc_cal);
+		kfree(mbhc_cfg.calibration);
+		kfree(msm8960_dai_list);
 		return ret;
 	}
 
@@ -2092,6 +2125,8 @@ static int __init msm8960_audio_init(void)
 	} else
 		msm8960_headset_gpios_configured = 1;
 
+	mutex_init(&cdc_mclk_mutex);
+	
 	INIT_DELAYED_WORK(&ext_amp_dwork.dwork,
 			external_speaker_amp_work);
 	mutex_init(&cdc_mclk_mutex);
@@ -2105,7 +2140,7 @@ static void __exit msm8960_audio_exit(void)
 	msm8960_free_headset_mic_gpios();
 	kfree(msm8960_dai_list);
 	platform_device_unregister(msm8960_snd_device);
-	kfree(tabla_mbhc_cal);
+	kfree(mbhc_cfg.calibration);
 	mutex_destroy(&cdc_mclk_mutex);
 }
 module_exit(msm8960_audio_exit);

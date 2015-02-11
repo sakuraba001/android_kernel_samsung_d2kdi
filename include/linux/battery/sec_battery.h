@@ -135,7 +135,6 @@ struct sec_battery_info {
 	struct work_struct cable_work;
 	struct wake_lock vbus_wake_lock;
 	unsigned int full_check_cnt;
-	unsigned int recharge_check_cnt;
 
 	/* test mode */
 	bool test_activated;
@@ -202,7 +201,6 @@ static struct device_attribute sec_battery_attrs[] = {
 	SEC_BATTERY_ATTR(wc_status),
 	SEC_BATTERY_ATTR(factory_mode),
 	SEC_BATTERY_ATTR(update),
-	SEC_BATTERY_ATTR(test_mode),
 
 	SEC_BATTERY_ATTR(2g_call),
 	SEC_BATTERY_ATTR(3g_call),
@@ -246,7 +244,6 @@ enum {
 	WC_STATUS,
 	FACTORY_MODE,
 	UPDATE,
-	TEST_MODE,
 
 	BATT_EVENT_2G_CALL,
 	BATT_EVENT_3G_CALL,

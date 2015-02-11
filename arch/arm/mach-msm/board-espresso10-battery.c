@@ -243,16 +243,15 @@ static bool sec_bat_check_cable_result_callback(
 	case POWER_SUPPLY_TYPE_USB:
 		pr_info("%s set vbus applied\n",
 			__func__);
-		msm_otg_set_cable_state(cable_type);
 		break;
 
 	case POWER_SUPPLY_TYPE_BATTERY:
 		pr_info("%s set vbus cut\n",
 			__func__);
-		msm_otg_set_cable_state(cable_type);
+		msm_otg_set_charging_state(0);
 		break;
 	case POWER_SUPPLY_TYPE_MAINS:
-		msm_otg_set_cable_state(cable_type);
+		msm_otg_set_charging_state(1);
 		break;
 	default:
 		pr_err("%s cable type (%d)\n",
@@ -296,7 +295,7 @@ static bool sec_fg_fuelalert_process(bool is_fuel_alerted) {return true; }
 static sec_bat_adc_region_t cable_adc_value_table[] = {
 	{0,	0},
 	{0,	0},
-	{900,	1550},
+	{900,	1350},
 	{0,	0},
 	{0,	0},
 	{0,	0},
@@ -307,7 +306,6 @@ static sec_bat_adc_region_t cable_adc_value_table[] = {
 	{0,	0},
 };
 
-#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 static sec_charging_current_t charging_current_table[] = {
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
@@ -321,35 +319,6 @@ static sec_charging_current_t charging_current_table[] = {
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
 };
-#elif defined(CONFIG_MACH_ESPRESSO10_VZW)
-static sec_charging_current_t charging_current_table[] = {
-	{0,	0,	0,	0},
-	{0,	0,	0,	0},
-	{1800,	1800,	370,	0},
-	{1500,	500,	370,	0},
-	{1500,	500,	370,	0},
-	{1500,	500,	370,	0},
-	{1500,	500,	370,	0},
-	{1500,	700,	370,	0},
-	{0,	0,	0,	0},
-	{0,	0,	0,	0},
-	{0,	0,	0,	0},
-};
-#else
-static sec_charging_current_t charging_current_table[] = {
-	{0,	0,	0,	0},
-	{0,	0,	0,	0},
-	{1800,	1800,	400,	0},
-	{1500,	500,	400,	0},
-	{1500,	500,	400,	0},
-	{1500,	500,	400,	0},
-	{1500,	500,	400,	0},
-	{1500,	700,	400,	0},
-	{0,	0,	0,	0},
-	{0,	0,	0,	0},
-	{0,	0,	0,	0},
-};
-#endif
 
 static int polling_time_table[] = {
 	10,	/* BASIC */
@@ -391,9 +360,6 @@ static sec_battery_platform_data_t sec_battery_pdata = {
 	.chg_gpio_init = sec_chg_gpio_init,
 
 	.is_lpm = sec_bat_is_lpm,
-	.jig_irq = PM8921_GPIO_IRQ(PM8921_IRQ_BASE, PMIC_GPIO_IF_CON_SENSE),
-	.jig_irq_attr =
-		IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
 	.check_jig_status = sec_bat_check_jig_status,
 	.check_cable_callback =
 		sec_bat_check_cable_callback,
@@ -489,52 +455,31 @@ static sec_battery_platform_data_t sec_battery_pdata = {
 	.temp_low_recovery_event = 18,
 	.temp_high_threshold_normal = 480,
 	.temp_high_recovery_normal = 430,
-	.temp_low_threshold_normal = -12,
+	.temp_low_threshold_normal = -32,
 	.temp_low_recovery_normal = 0,
 	.temp_high_threshold_lpm = 480,
 	.temp_high_recovery_lpm = 430,
-	.temp_low_threshold_lpm = -12,
+	.temp_low_threshold_lpm = -32,
 	.temp_low_recovery_lpm = 0,
-#elif defined(CONFIG_MACH_ESPRESSO10_VZW)
+#else
 	/* VZW */
-	.temp_high_threshold_event = 645,
+	.temp_high_threshold_event = 588,
 	.temp_high_recovery_event = 427,
 	.temp_low_threshold_event = -25,
 	.temp_low_recovery_event = 18,
-	.temp_high_threshold_normal = 515,
-	.temp_high_recovery_normal = 429,
-	.temp_low_threshold_normal = -44,
-	.temp_low_recovery_normal = -14,
+	.temp_high_threshold_normal = 489,
+	.temp_high_recovery_normal = 427,
+	.temp_low_threshold_normal = -25,
+	.temp_low_recovery_normal = 18,
 	.temp_high_threshold_lpm = 451,
 	.temp_high_recovery_lpm = 425,
 	.temp_low_threshold_lpm = -19,
 	.temp_low_recovery_lpm = 6,
-#else
-	/* SPR */
-	.temp_high_threshold_event = 578,
-	.temp_high_recovery_event = 444,
-	.temp_low_threshold_event = -32,
-	.temp_low_recovery_event = -10,
-	.temp_high_threshold_normal = 510,
-	.temp_high_recovery_normal = 444,
-	.temp_low_threshold_normal = -32,
-	.temp_low_recovery_normal = -10,
-	.temp_high_threshold_lpm = 460,
-	.temp_high_recovery_lpm = 450,
-	.temp_low_threshold_lpm = -20,
-	.temp_low_recovery_lpm = -10,
 #endif
-#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 	.full_check_type = SEC_BATTERY_FULLCHARGED_CHGGPIO,
 	.full_check_count = 1,
 	.full_check_adc_1st = 200,
 	.full_check_adc_2nd = 200,
-#else
-	.full_check_type = SEC_BATTERY_FULLCHARGED_FG_CURRENT,
-	.full_check_count = 2,
-	.full_check_adc_1st = 265,
-	.full_check_adc_2nd = 265,
-#endif
 	.chg_gpio_full_check =
 		PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_CHG_STAT),
 	.chg_polarity_full_check = 0,
@@ -542,21 +487,11 @@ static sec_battery_platform_data_t sec_battery_pdata = {
 		SEC_BATTERY_FULL_CONDITION_NOTIMEFULL |
 		SEC_BATTERY_FULL_CONDITION_VCELL,
 	.full_condition_soc = 99,
-#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 	.full_condition_vcell = 4100,
-#else
-	.full_condition_vcell = 4180,
-#endif
 
 	.recharge_condition_type =
-		SEC_BATTERY_RECHARGE_CONDITION_VCELL |
-		SEC_BATTERY_RECHARGE_CONDITION_AVGVCELL,
-	.recharge_condition_avgvcell = 4000,
-#if defined(CONFIG_MACH_ESPRESSO10_ATT)
+		SEC_BATTERY_RECHARGE_CONDITION_VCELL,
 	.recharge_condition_vcell = 4150,
-#else
-	.recharge_condition_vcell = 4140,
-#endif
 
 	.charging_total_time = 10 * 60 * 60,
 	.recharging_total_time = 2 * 60 * 60,
@@ -574,7 +509,7 @@ static sec_battery_platform_data_t sec_battery_pdata = {
 		/* SEC_FUELGAUGE_CAPACITY_TYPE_SCALE | */
 		/* SEC_FUELGAUGE_CAPACITY_TYPE_ATOMIC, */
 	.capacity_max = 1000,
-	.capacity_max_margin = 50,
+	.capacity_max_margin = 30,
 	.capacity_min = 0,
 
 	/* Charger */

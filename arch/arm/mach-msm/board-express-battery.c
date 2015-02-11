@@ -203,19 +203,6 @@ static void sec_bat_switch_to_normal(void) {}
 static int current_cable_type = POWER_SUPPLY_TYPE_BATTERY;
 static int sec_bat_check_cable_callback(void)
 {
-	/* When TA(or USB) cable is inserted,
-	 * bat_irq_thread is called, before fsa9485_charger_cb.
-	 * Both can trigger the cable/monitor work.
-	 * Should be changed the order of them bcz of below issue.
-	 * e.g. If the phone is in high temperature and inserting TA,
-	 * 1. bat_irq_thread > cable_work > monitor work > high temp stop
-	 * 2.            fsa9485_charger_cb > cable_work > charging start
-	 * At that time, as soon as stop charging bcz of high temp,
-	 * charging start by cable_work of fsa9485.
-	 * Add msleep to fix the this issue.
-	 */
-	msleep(500);
-
 	if (current_cable_type ==
 		POWER_SUPPLY_TYPE_BATTERY &&
 		gpio_get_value_cansleep(
@@ -225,10 +212,8 @@ static int sec_bat_check_cable_callback(void)
 		return POWER_SUPPLY_TYPE_UARTOFF;
 	}
 
-	if ((current_cable_type ==
-		POWER_SUPPLY_TYPE_UARTOFF ||
-		current_cable_type ==
-		POWER_SUPPLY_TYPE_CARDOCK) &&
+	if (current_cable_type ==
+		POWER_SUPPLY_TYPE_UARTOFF &&
 		!gpio_get_value_cansleep(
 		PM8921_GPIO_PM_TO_SYS(
 		PMIC_GPIO_OTG_POWER))) {
@@ -389,7 +374,7 @@ static sec_charging_current_t charging_current_table[] = {
 	{1000,	500,	200,	0},
 	{1000,	500,	200,	0},
 	{1000,	700,	200,	0},
-	{1000,	1050,	200,	0},
+	{0,	0,	0,	0},
 	{1000,	1050,	200,	0},
 	{0,	0,	0,	0},
 	{1000,	-500,	0,	0},
@@ -517,7 +502,7 @@ static sec_battery_platform_data_t sec_battery_pdata = {
 		sizeof(temp_table)/sizeof(sec_bat_adc_table_data_t),
 
 	.temp_check_type = SEC_BATTERY_TEMP_CHECK_TEMP,
-	.temp_check_count = 1,
+	.temp_check_count = 2,
 	.temp_high_threshold_event = 610,
 	.temp_high_recovery_event = 400,
 	.temp_low_threshold_event = -50,

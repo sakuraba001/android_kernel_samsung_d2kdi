@@ -98,6 +98,8 @@ struct mxt224s_platform_data {
 	const u8 *t62_config_chrg_e;
 	const u8 *t46_config_batt_e;
 	const u8 *t46_config_chrg_e;
+	const u8 *t35_config_batt_e;
+	const u8 *t35_config_chrg_e;
 	void (*power_onoff) (int);
 	void (*register_cb) (void *);
 	void (*read_ta_status) (void *);

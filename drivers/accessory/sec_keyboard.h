@@ -48,7 +48,7 @@
 #define KEYBOARD_MAX   0x7f
 
 enum KEY_LAYOUT {
-	UNKNOWN_KEYLAYOUT = 0,
+	UNKOWN_KEYLAYOUT = 0,
 	US_KEYLAYOUT,
 	UK_KEYLAYOUT,
 };
@@ -95,7 +95,6 @@ struct sec_keyboard_drvdata {
 	unsigned long connected_time;
 	unsigned long disconnected_time;
 	unsigned char scan_code;
-	int suspend_state;
 };
 
 static const unsigned short sec_keycodes[KEYBOARD_SIZE] = {

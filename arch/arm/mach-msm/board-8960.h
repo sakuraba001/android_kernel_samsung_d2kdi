@@ -47,8 +47,7 @@ extern struct regulator_init_data msm_saw_regulator_pdata_s6;
 extern struct rpm_regulator_platform_data msm_rpm_regulator_pdata __devinitdata;
 #if defined(CONFIG_TOUCHSCREEN_MMS144) || \
 	defined(CONFIG_TOUCHSCREEN_MMS136) || \
-	defined(CONFIG_TOUCHSCREEN_MMS136_TABLET) || \
-	defined(CONFIG_TOUCHSCREEN_MMS134S)
+	defined(CONFIG_TOUCHSCREEN_MMS136_TABLET)
 extern void __init mms_tsp_input_init(void);
 #endif
 
@@ -63,7 +62,7 @@ extern void __init usb_switch_init(void);
 #if defined(CONFIG_MACH_JAGUAR) || defined(CONFIG_MACH_M2_VZW) || \
 defined(CONFIG_MACH_M2_ATT) || defined(CONFIG_MACH_M2_SPR) || \
 defined(CONFIG_MACH_M2_SKT) || defined(CONFIG_MACH_M2_DCM) || \
-defined(CONFIG_MACH_K2_KDI)
+defined(CONFIG_MACH_M2_KDI)
 extern void __init msm8960_cam_init(void);
 #endif
 
@@ -95,7 +94,6 @@ enum {
 extern int samsung_cmc624_on(int enable);
 extern int samsung_has_cmc624(void);
 extern int gpio_rev(unsigned int);
-extern void msm_otg_set_cable_state(int);
 extern void msm_otg_set_vbus_state(int);
 extern void msm_otg_set_charging_state(bool enable);
 extern void msm_otg_set_id_state(bool enable);
@@ -113,6 +111,7 @@ void msm8960_init_fb(void);
 void msm8960_init_pmic(void);
 void msm8960_init_mmc(void);
 int msm8960_init_gpiomux(void);
+unsigned char msm8960_hdmi_as_primary_selected(void);
 void msm8960_allocate_fb_region(void);
 void msm8960_set_display_params(char *prim_panel, char *ext_panel);
 void msm8960_pm8921_gpio_mpp_init(void);

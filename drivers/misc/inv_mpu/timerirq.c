@@ -112,6 +112,7 @@ static int stop_timerirq(struct timerirq_data *data)
 {
 	dev_dbg(data->dev->this_device,
 		"%s current->pid %lx\n", __func__, (unsigned long)data);
+
 	if (data->run) {
 		data->run = false;
 		mod_timer(&data->timer, jiffies + 1);

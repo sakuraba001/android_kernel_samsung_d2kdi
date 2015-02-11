@@ -226,8 +226,8 @@ void cpu_idle(void)
 
 	/* endless idle loop with no priority at all */
 	while (1) {
-		tick_nohz_stop_sched_tick(1);
 		idle_notifier_call_chain(IDLE_START);
+		tick_nohz_stop_sched_tick(1);
 		while (!need_resched()) {
 #ifdef CONFIG_HOTPLUG_CPU
 			if (cpu_is_offline(smp_processor_id()))
@@ -235,6 +235,9 @@ void cpu_idle(void)
 #endif
 
 			local_irq_disable();
+#ifdef CONFIG_PL310_ERRATA_769419
+			wmb();
+#endif
 			if (hlt_counter) {
 				local_irq_enable();
 				cpu_relax();
@@ -344,9 +347,6 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 static void show_extra_register_data(struct pt_regs *regs, int nbytes)
 {
 	mm_segment_t fs;
-#ifdef CONFIG_SEC_DEBUG
-	extern int64_t msm_timer_enter_idle(void);
-#endif
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -366,9 +366,6 @@ static void show_extra_register_data(struct pt_regs *regs, int nbytes)
 	show_data(regs->ARM_r8 - nbytes, nbytes * 2, "R8");
 	show_data(regs->ARM_r9 - nbytes, nbytes * 2, "R9");
 	show_data(regs->ARM_r10 - nbytes, nbytes * 2, "R10");
-#ifdef CONFIG_SEC_DEBUG
-	show_data(&msm_timer_enter_idle+0x4C - nbytes, nbytes * 2, "msm_timer_enter_idle+0x4C");
-#endif
 	set_fs(fs);
 }
 

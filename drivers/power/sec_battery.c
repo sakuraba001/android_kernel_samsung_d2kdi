@@ -60,6 +60,7 @@
 #define TOTAL_EVENT_TIME  (10 * 60)	/* 10 minites */
 
 static int is_charging_disabled;
+static unsigned int sec_bat_recovery_mode;
 
 enum cable_type_t {
 	CABLE_TYPE_NONE = 0,
@@ -75,9 +76,11 @@ enum cable_type_t {
 #ifdef CONFIG_WIRELESS_CHARGING
 	CABLE_TYPE_WPC = 10,
 #endif
-#if defined (CONFIG_MACH_K2_KDI)
-	CABLE_TYPE_HDMI = 11,
+#if defined (CONFIG_MACH_M2_KDI)
+        CABLE_TYPE_HDMI = 11,
 #endif
+
+
 };
 
 enum batt_full_t {
@@ -213,9 +216,10 @@ struct sec_bat_info {
 	bool factory_mode;
 	bool check_full_state;
 	unsigned int check_full_state_cnt;
-#if defined(CONFIG_MACH_K2_KDI)
-	unsigned int chg_1A_cnt;
-#endif	
+#if defined(CONFIG_MACH_M2_KDI)
+        unsigned int chg_1A_cnt;
+#endif
+
 };
 
 static char *supply_list[] = {
@@ -429,10 +433,11 @@ static int sec_bat_get_property(struct power_supply *ps,
 				info->test_info.test_value);
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 		} else if (info->is_timeout_chgstop &&
-			   info->charging_status == POWER_SUPPLY_STATUS_FULL) {
+			info->charging_status == POWER_SUPPLY_STATUS_FULL &&
+			info->batt_soc != 100) {
 			/*
 			new concept : in case of time-out charging stop,
-			Do not update FULL for UI,
+			Do not update FULL for UI except soc 100%,
 			Use same time-out value
 			for first charing and re-charging
 			 */
@@ -463,9 +468,40 @@ static int sec_bat_get_property(struct power_supply *ps,
 	case POWER_SUPPLY_PROP_ONLINE:
 		if (info->charging_status == POWER_SUPPLY_STATUS_DISCHARGING &&
 		    info->cable_type != CABLE_TYPE_NONE) {
-			val->intval = CABLE_TYPE_NONE;
-		} else
-			val->intval = info->cable_type;
+			val->intval = POWER_SUPPLY_TYPE_BATTERY;
+		} else {
+			switch (info->cable_type) {
+			case CABLE_TYPE_NONE:
+				val->intval = POWER_SUPPLY_TYPE_BATTERY;
+				break;
+			case CABLE_TYPE_USB:
+				val->intval = POWER_SUPPLY_TYPE_USB;
+				break;
+			case CABLE_TYPE_AC:
+				val->intval = POWER_SUPPLY_TYPE_MAINS;
+				break;
+			case CABLE_TYPE_MISC:
+				val->intval = POWER_SUPPLY_TYPE_MISC;
+				break;
+			case CABLE_TYPE_CARDOCK:
+				val->intval = POWER_SUPPLY_TYPE_CARDOCK;
+				break;
+			case CABLE_TYPE_UARTOFF:
+				val->intval = POWER_SUPPLY_TYPE_UARTOFF;
+				break;
+			case CABLE_TYPE_CDP:
+				val->intval = POWER_SUPPLY_TYPE_USB_CDP;
+				break;
+#if defined(CONFIG_WIRELESS_CHARGING)
+			case CABLE_TYPE_WPC:
+				val->intval = POWER_SUPPLY_TYPE_WPC;
+				break;
+#endif
+			default:
+				val->intval = POWER_SUPPLY_TYPE_UNKNOWN;
+				break;
+			}
+		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = sec_bat_get_fuelgauge_data(info, FG_T_VCELL);
@@ -726,11 +762,12 @@ static int sec_bat_set_property(struct power_supply *ps,
 		case POWER_SUPPLY_TYPE_SMART_DOCK:
 			info->cable_type = CABLE_TYPE_SMART_DOCK;
 			break;
-#if defined (CONFIG_MACH_K2_KDI)
-		case POWER_SUPPLY_TYPE_HDMI:
-			info->cable_type = CABLE_TYPE_HDMI;
-			break;
+#if defined (CONFIG_MACH_M2_KDI)
+                case POWER_SUPPLY_TYPE_HDMI:
+                        info->cable_type = CABLE_TYPE_HDMI;
+                        break;
 #endif
+
 		default:
 			return -EINVAL;
 		}
@@ -799,7 +836,8 @@ static int sec_ac_get_property(struct power_supply *ps,
 		if (info->cable_type == CABLE_TYPE_MISC ||
 		    info->cable_type == CABLE_TYPE_UARTOFF ||
 		    info->cable_type == CABLE_TYPE_CARDOCK) {
-			if (!info->dcin_intr_triggered)
+			if (sec_bat_is_charging(info)
+				== POWER_SUPPLY_STATUS_DISCHARGING)
 				val->intval = 0;
 			else
 				val->intval = 1;
@@ -809,11 +847,11 @@ static int sec_ac_get_property(struct power_supply *ps,
 #ifdef CONFIG_WIRELESS_CHARGING
 				(info->cable_type == CABLE_TYPE_WPC) ||
 #endif
-#if defined (CONFIG_MACH_K2_KDI)
-				(info->cable_type == CABLE_TYPE_UNKNOWN) || \
-				(info->cable_type == CABLE_TYPE_HDMI);
+#if defined (CONFIG_MACH_M2_KDI)
+                                (info->cable_type == CABLE_TYPE_UNKNOWN) || \
+                                (info->cable_type == CABLE_TYPE_HDMI);
 #else
-			(info->cable_type == CABLE_TYPE_UNKNOWN);
+			    (info->cable_type == CABLE_TYPE_UNKNOWN);
 #endif
 		}
 	}
@@ -1032,7 +1070,11 @@ static void sec_check_chgcurrent(struct sec_bat_info *info)
 
 			if (info->batt_current_adc == 0) {
 				if (info->is_top_off == 1 &&
+#if defined(CONFIG_MACH_M2_KDI)
+                                        info->batt_presoc >= 95) {
+#else
 					info->batt_presoc >= 99) {
+#endif
 					if (is_full_condition == false)
 						wake_lock_timeout(
 						&info->monitor_wake_lock,
@@ -1219,13 +1261,14 @@ static int sec_bat_enable_charging(struct sec_bat_info *info, bool enable)
 			val_chg_current.intval = 900;
 			info->current_avg = 0;
 			break;
-#if defined (CONFIG_MACH_K2_KDI)
-		case CABLE_TYPE_HDMI:
-			val_type.intval = POWER_SUPPLY_STATUS_CHARGING;
-			val_chg_current.intval = 450;
-			info->current_avg = 0;
-			break;
+#if defined (CONFIG_MACH_M2_KDI)
+                case CABLE_TYPE_HDMI:
+                        val_type.intval = POWER_SUPPLY_STATUS_CHARGING;
+                        val_chg_current.intval = 450;
+                        info->current_avg = 0;
+                        break;
 #endif
+
 		default:
 			dev_err(info->dev, "%s: Invalid func use\n", __func__);
 			return -EINVAL;
@@ -1355,6 +1398,8 @@ static void sec_bat_cable_work(struct work_struct *work)
 
 	wake_lock(&info->cable_wake_lock);
 
+	info->prev_cable = info->cable_type;
+
 	if ((info->present == BATT_STATUS_MISSING)
 		&& (info->cable_type != CABLE_TYPE_NONE)) {
 		pr_info("[battery] VF is open, do not care cable_work\n");
@@ -1441,12 +1486,12 @@ static void sec_bat_cable_work(struct work_struct *work)
 	case CABLE_TYPE_MISC:
 	case CABLE_TYPE_CARDOCK:
 	case CABLE_TYPE_UARTOFF:
-		if (!info->dcin_intr_triggered && !info->lpm_chg_mode) {
+		if (sec_bat_is_charging(info)
+				== POWER_SUPPLY_STATUS_DISCHARGING) {
 			wake_lock_timeout(&info->vbus_wake_lock, 5 * HZ);
 			pr_info("%s : dock inserted, but dcin nok skip charging!\n",
 			     __func__);
-			sec_bat_enable_charging(info, true);
-			info->charging_enabled = false;
+			sec_bat_enable_charging(info, false);
 			break;
 		}
 	case CABLE_TYPE_UNKNOWN:
@@ -1476,8 +1521,8 @@ static void sec_bat_cable_work(struct work_struct *work)
 			pr_err("%s : failed to get input source(%d)\n",
 				__func__, ret);
 #endif
-#if defined (CONFIG_MACH_K2_KDI)
-	case CABLE_TYPE_HDMI:
+#if defined (CONFIG_MACH_M2_KDI)
+        case CABLE_TYPE_HDMI:
 #endif
 
 /*
@@ -1493,8 +1538,20 @@ static void sec_bat_cable_work(struct work_struct *work)
 
 		wake_lock_timeout(&info->vbus_wake_lock, 5 * HZ);
 		cancel_delayed_work(&info->measure_work);
+#if defined(CONFIG_MACH_M2_KDI)
+                if ((info->cable_type == CABLE_TYPE_AC) &&
+                        (sec_bat_is_charging(info) == POWER_SUPPLY_STATUS_DISCHARGING)) {
+                        /* skip charging enable and re-check on measure work */
+                        pr_info("%s: skip charging enable, "
+                                "re-check on measure_work\n", __func__);
+                } else {
+	                info->charging_status = POWER_SUPPLY_STATUS_CHARGING;
+        	        sec_bat_enable_charging(info, true);
+                }
+#else
 		info->charging_status = POWER_SUPPLY_STATUS_CHARGING;
 		sec_bat_enable_charging(info, true);
+#endif
 		info->measure_interval = MEASURE_CHG_INTERVAL;
 		queue_delayed_work(info->monitor_wqueue, &info->measure_work,
 				   HZ / 2);
@@ -1599,17 +1656,18 @@ static void sec_bat_monitor_work(struct work_struct *work)
 
 	wake_lock(&info->monitor_wake_lock);
 
-#if defined(CONFIG_MACH_K2_KDI)
-	if(info->is_esus_state == false && info->chg_1A_cnt < 3)
-	{
-		if (sec_bat_is_charging(info) == POWER_SUPPLY_STATUS_CHARGING) 
-		{	
-			psy_smb->set_property(psy_smb, POWER_SUPPLY_PROP_RESUME, NULL);
-			info->chg_1A_cnt++;
+#if defined(CONFIG_MACH_M2_KDI)
+        if(info->is_esus_state == false && info->chg_1A_cnt < 3)
+        {
+                if (sec_bat_is_charging(info) == POWER_SUPPLY_STATUS_CHARGING &&
+                        info->batt_soc > 0)
+                {
+                        psy_smb->set_property(psy_smb, POWER_SUPPLY_PROP_RESUME, NULL);
+                        info->chg_1A_cnt++;
 
-			pr_info("%s[BATT] Disable 1200mA charging!\n");
-		}	
-	}
+                        pr_info("%s[BATT] Disable 1200mA charging!\n");
+                }
+        }
 #endif
 
 	if (!psy_fg) {
@@ -1617,22 +1675,40 @@ static void sec_bat_monitor_work(struct work_struct *work)
 		goto monitoring_skip;
 	}
 
-	pm8921_enable_batt_therm(1);
-	/* check battery 5 times */
-	for (i = 0; i < 5; i++) {
-		msleep(500);
-		info->present = !gpio_get_value_cansleep(info->batt_int);
+	if (sec_bat_recovery_mode == 1
+		|| system_state == SYSTEM_RESTART) {
+		pm8921_enable_batt_therm(0);
+		info->present = 1;
+		pr_info("%s : recovery/restart, skip batt check(1)\n",
+				__func__);
+	} else {
+		pm8921_enable_batt_therm(1);
+		/* check battery 5 times */
+		for (i = 0; i < 5; i++) {
+			msleep(500);
+			if (sec_bat_recovery_mode == 1
+				|| system_state == SYSTEM_RESTART) {
+				pm8921_enable_batt_therm(0);
+				info->present = 1;
+				pr_info("%s : recovery/restart, skip batt check(2)\n",
+						__func__);
+				break;
+			}
 
-		/* If the battery is missing, then check more */
-		if (info->present) {
-			i++;
-			break;
+			info->present = !gpio_get_value_cansleep(
+				info->batt_int);
+
+			/* If the battery is missing, then check more */
+			if (info->present) {
+				i++;
+				break;
+			}
 		}
+		pm8921_enable_batt_therm(0);
+		pr_info("%s: battery check is %s (%d time%c)\n",
+			__func__, info->present ? "present" : "absent",
+			i, (i == 1) ? ' ' : 's');
 	}
-	pm8921_enable_batt_therm(0);
-	pr_info("%s: battery check is %s (%d time%c)\n",
-		__func__, info->present ? "present" : "absent",
-		i, (i == 1) ? ' ' : 's');
 
 	if ((info->present == BATT_STATUS_MISSING)
 			&& (info->cable_type != CABLE_TYPE_NONE)) {
@@ -1765,8 +1841,10 @@ static void sec_bat_monitor_work(struct work_struct *work)
 			info->batt_soc = 100;
 			info->check_full_state_cnt++;
 		} else {
-			if (info->batt_presoc > info->batt_soc) {
+			if ((info->batt_presoc > info->batt_soc)
+				&& (info->check_full_state_cnt <= 4)) {
 				info->batt_soc = info->batt_presoc - 1;
+				info->check_full_state_cnt++;
 			} else {
 				info->check_full_state = false;
 				info->check_full_state_cnt = 0;
@@ -1921,7 +1999,7 @@ static struct device_attribute sec_battery_attrs[] = {
 	SEC_BATTERY_ATTR(batt_current_adc),
 	SEC_BATTERY_ATTR(batt_esus_test),
 	SEC_BATTERY_ATTR(sys_rev),
-	SEC_BATTERY_ATTR(fg_psoc),
+	SEC_BATTERY_ATTR(batt_read_raw_soc),
 	SEC_BATTERY_ATTR(batt_reset_soc),
 #ifdef CONFIG_WIRELESS_CHARGING
 	SEC_BATTERY_ATTR(wc_status),
@@ -1973,7 +2051,7 @@ enum {
 	BATT_CURRENT_ADC,
 	BATT_ESUS_TEST,
 	BATT_SYSTEM_REV,
-	BATT_FG_PSOC,
+	BATT_READ_RAW_SOC,
 	BATT_RESET_SOC,
 #ifdef CONFIG_WIRELESS_CHARGING
 	BATT_WC_STATUS,
@@ -2118,12 +2196,44 @@ static ssize_t sec_bat_show_property(struct device *dev,
 			       info->batt_temp_radc);
 		break;
 	case BATT_CHARGING_SOURCE:
-		val = info->cable_type;
+
+		switch(info->cable_type) {
+			case CABLE_TYPE_NONE: 
+				val = POWER_SUPPLY_TYPE_BATTERY;
+				break;
+			case CABLE_TYPE_USB:
+				val = POWER_SUPPLY_TYPE_USB;
+				break;
+			case CABLE_TYPE_AC:
+				val = POWER_SUPPLY_TYPE_MAINS;
+				break;
+			case CABLE_TYPE_MISC:
+				val = POWER_SUPPLY_TYPE_MISC;
+				break;
+			case CABLE_TYPE_CARDOCK:
+				val = POWER_SUPPLY_TYPE_CARDOCK;
+				break;
+			case CABLE_TYPE_UARTOFF:
+				val = POWER_SUPPLY_TYPE_UARTOFF;
+				break;
+			case CABLE_TYPE_CDP:
+				val = POWER_SUPPLY_TYPE_USB_CDP;
+				break;
+#ifdef CONFIG_WIRELESS_CHARGING
+			case CABLE_TYPE_WPC:
+				val = POWER_SUPPLY_TYPE_WPC;
+				break;
+#endif
+			default:
+				val = POWER_SUPPLY_TYPE_UNKNOWN;
+				break;
+		}
+
 		/*val = 2; // for lpm test */
 		if (info->lpm_chg_mode &&
 		    info->cable_type != CABLE_TYPE_NONE &&
 		    info->charging_status == POWER_SUPPLY_STATUS_DISCHARGING) {
-			val = CABLE_TYPE_NONE;
+			val = POWER_SUPPLY_TYPE_BATTERY;
 		}
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", val);
 		break;
@@ -2180,7 +2290,7 @@ static ssize_t sec_bat_show_property(struct device *dev,
 	case BATT_SYSTEM_REV:
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", info->hw_rev);
 		break;
-	case BATT_FG_PSOC:
+	case BATT_READ_RAW_SOC:
 		val = sec_bat_get_fuelgauge_data(info, FG_T_PSOC);
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", val);
 		break;
@@ -2552,19 +2662,19 @@ static void sec_bat_early_suspend(struct early_suspend *handle)
 {
 	struct sec_bat_info *info = container_of(handle, struct sec_bat_info,
 						 bat_early_suspend);
+#if defined (CONFIG_MACH_M2_KDI)
+        if (sec_bat_is_charging(info) == POWER_SUPPLY_STATUS_CHARGING)
+        {
+                struct power_supply *psy_smb = power_supply_get_by_name(info->charger_name);
 
-#if defined (CONFIG_MACH_K2_KDI)
-	if (sec_bat_is_charging(info) == POWER_SUPPLY_STATUS_CHARGING) 
-	{	 
-		struct power_supply *psy_smb = power_supply_get_by_name(info->charger_name);
+                psy_smb->set_property(psy_smb, POWER_SUPPLY_PROP_SUSPEND, NULL);
 
-		psy_smb->set_property(psy_smb, POWER_SUPPLY_PROP_SUSPEND, NULL);
+                info->chg_1A_cnt = 0;
 
-		info->chg_1A_cnt = 0;
-			
-			pr_info("%s[BATT] Enable 1200mA charging!\n");
-		}
+                        pr_info("%s[BATT] Enable 1200mA charging!\n");
+                }
 #endif
+
 
 	pr_info("%s[BATT]...\n", __func__);
 	info->is_esus_state = true;
@@ -2582,6 +2692,25 @@ static void sec_bat_late_resume(struct early_suspend *handle)
 
 	return;
 }
+
+static int __init sec_bat_current_boot_mode(char *mode)
+{
+	/*
+	*	1 is recovery booting
+	*	0 is normal booting
+	*/
+
+	if (strncmp(mode, "1", 1) == 0)
+		sec_bat_recovery_mode = 1;
+	else
+		sec_bat_recovery_mode = 0;
+
+	pr_info("%s : %s", __func__, sec_bat_recovery_mode == 1 ?
+				"recovery" : "normal");
+
+	return 1;
+}
+__setup("androidboot.batt_check_recovery=", sec_bat_current_boot_mode);
 
 static __devinit int sec_bat_probe(struct platform_device *pdev)
 {
@@ -2740,10 +2869,9 @@ static __devinit int sec_bat_probe(struct platform_device *pdev)
 		info->full_cond_count = FULL_CHG_COND_COUNT;
 		info->full_cond_voltage = FULL_CHARGE_COND_VOLTAGE;
 	}
-
-#if defined(CONFIG_MACH_K2_KDI)
-	if(poweroff_charging)
-		info->full_cond_count = 1;
+#if defined(CONFIG_MACH_M2_KDI)
+        if(poweroff_charging)
+                info->full_cond_count = 1;
 #endif
 
 	if (pdata->recharge_voltage != 0)
@@ -2793,7 +2921,12 @@ static __devinit int sec_bat_probe(struct platform_device *pdev)
 	}
 
 	/* create sec detail attributes */
-	sec_bat_create_attrs(info->psy_bat.dev);
+	ret = sec_bat_create_attrs(info->psy_bat.dev);
+	if (ret) {
+		dev_err(info->dev, "%s: failed to create attrs\n",
+			__func__);
+		goto err_supply_unreg_ac;
+	}
 
 	info->entry = create_proc_entry("batt_info_proc", S_IRUGO, NULL);
 	if (!info->entry)
@@ -2930,13 +3063,12 @@ static int sec_bat_suspend(struct device *dev)
 		sec_bat_monitoring_alarm(info, ALARM_INTERVAL);
 		info->slow_polling = 1;
 	} else {
+#if defined(CONFIG_MACH_M2_KDI)
+        if(info->lpm_chg_mode)
+                sec_bat_monitoring_alarm(info, CHARGING_ALARM_INTERVAL/2);
+        else
+                sec_bat_monitoring_alarm(info, CHARGING_ALARM_INTERVAL);
 
-#if defined(CONFIG_MACH_K2_KDI)
-	if(info->lpm_chg_mode)
-		sec_bat_monitoring_alarm(info, CHARGING_ALARM_INTERVAL/2);
-	else
-		sec_bat_monitoring_alarm(info, CHARGING_ALARM_INTERVAL);
-	
 #else
 		sec_bat_monitoring_alarm(info, CHARGING_ALARM_INTERVAL);
 #endif

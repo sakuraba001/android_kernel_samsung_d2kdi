@@ -493,6 +493,7 @@ struct sec_debug_subsys {
 	struct sec_debug_subsys_private priv;
 };
 
+extern void print_modem_dump_info(void);
 extern int sec_debug_subsys_add_var_mon(char *name, unsigned int size,
 	unsigned int addr);
 #define SEC_DEBUG_SUBSYS_ADD_VAR_TO_MONITOR(var) \
@@ -521,6 +522,10 @@ int sec_debug_save_die_info(const char *str, struct pt_regs *regs);
 int sec_debug_save_panic_info(const char *str, unsigned int caller);
 extern void sec_debug_set_qc_dload_magic(int on);
 extern uint32_t global_pvs;
+#endif
+
+#ifdef CONFIG_SEC_DEBUG_DOUBLE_FREE
+extern void *kfree_hook(void *p, void *caller);
 #endif
 
 #endif	/* SEC_DEBUG_H */

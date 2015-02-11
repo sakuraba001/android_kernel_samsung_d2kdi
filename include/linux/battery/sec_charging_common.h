@@ -335,8 +335,6 @@ struct sec_battery_platform_data {
 	bool (*fg_gpio_init)(void);
 	bool (*chg_gpio_init)(void);
 	bool (*is_lpm)(void);
-	int jig_irq;
-	unsigned long jig_irq_attr;
 	bool (*check_jig_status) (void);
 	int (*check_cable_callback)(void);
 	void (*cable_switch_check)(void);
@@ -443,7 +441,6 @@ struct sec_battery_platform_data {
 	unsigned int full_condition_avgvcell;
 	unsigned int full_condition_ocv;
 
-	unsigned int recharge_check_count;
 	sec_battery_recharge_condition_t recharge_condition_type;
 	unsigned int recharge_condition_soc;
 	unsigned int recharge_condition_avgvcell;

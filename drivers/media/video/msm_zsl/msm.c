@@ -35,6 +35,7 @@ static struct msm_cam_server_dev g_server_dev;
 static struct class *msm_class;
 static dev_t msm_devno;
 static int vnode_count;
+unsigned int open_fail_flag;
 
 module_param(msm_camera_v4l2_nr, uint, 0644);
 MODULE_PARM_DESC(msm_camera_v4l2_nr, "videoX start number, -1 is autodetect");
@@ -129,7 +130,7 @@ static int msm_ctrl_cmd_done(void __user *arg)
 static int msm_server_control(struct msm_cam_server_dev *server_dev,
 				struct msm_ctrl_cmd *out)
 {
-	int rc = 0;
+	int rc = 0,wait_count=0;
 	void *value;
 	struct msm_queue_cmd *rcmd;
 	struct msm_ctrl_cmd *ctrlcmd;
@@ -158,9 +159,24 @@ static int msm_server_control(struct msm_cam_server_dev *server_dev,
 
 	/* wait for config return status */
 	D("Waiting for config status\n");
+	/* QC-Patch Start */
+	#if 0
 	rc = wait_event_interruptible_timeout(queue->wait,
 		!list_empty_careful(&queue->list),
 		msecs_to_jiffies(out->timeout_ms));
+	#endif
+	wait_count = 2; 
+	do { 
+		rc = wait_event_interruptible_timeout(queue->wait, 
+		!list_empty_careful(&queue->list), 
+		msecs_to_jiffies(out->timeout_ms)); 
+		wait_count--; 
+		if (rc != -ERESTARTSYS) 
+			break; 
+		D("%s: wait_event interrupted by signal, remain_count = %d", 
+			__func__, wait_count); 
+		} while (wait_count > 0); 
+	/* QC-Patch End */
 	D("Waiting is over for config status\n");
 	if (list_empty_careful(&queue->list)) {
 		if (!rc)
@@ -1417,6 +1433,7 @@ static int msm_open_init(struct msm_cam_v4l2_device *pcam,
 	struct msm_cam_v4l2_dev_inst *pcam_inst)
 {
 	int rc;
+	open_fail_flag = 0;
 
 	rc = msm_cam_server_open_session(&g_server_dev, pcam);
 	if (rc < 0) {
@@ -1467,6 +1484,7 @@ static int msm_open_init(struct msm_cam_v4l2_device *pcam,
 
 	rc = msm_send_open_server(pcam->vnode_id);
 	if (rc < 0) {
+		open_fail_flag = 1;
 		pr_err("%s failed\n", __func__);
 		goto fail5;
 	}
@@ -1489,6 +1507,7 @@ fail1:
 fail:
 	msm_cam_server_close_session(&g_server_dev, pcam);
 end:
+	open_fail_flag = 0;
 	return rc;
 }
 
@@ -1625,6 +1644,19 @@ static int msm_close(struct file *f)
 
 
 	mutex_lock(&pcam->vid_lock);
+#if defined(CONFIG_MSM_IOMMU)
+	if (pcam_inst->streamon) {
+		/*something went wrong since instance
+		is closing without streamoff*/
+		pcam->mctl.mctl_cmd = NULL;  /* QC-Patch */
+		if (pcam->mctl.mctl_release) {
+			rc = pcam->mctl.mctl_release(&(pcam->mctl));
+			if (rc < 0)
+				pr_err("mctl_release fails %d\n", rc);
+		}
+		pcam->mctl.mctl_release = NULL;/*so that it isn't closed again*/
+	}
+#endif
 	pcam_inst->streamon = 0;
 	pcam->use_count--;
 	pcam->dev_inst_map[pcam_inst->image_mode] = NULL;
@@ -1649,7 +1681,7 @@ static int msm_close(struct file *f)
 		rc = msm_cam_server_close_session(&g_server_dev, pcam);
 		if (rc < 0)
 			pr_err("msm_cam_server_close_session fails %d\n", rc);
-
+		pcam->mctl.mctl_cmd = NULL; /* QC-Patch */
 		if (pcam->mctl.mctl_release) {
 			rc = pcam->mctl.mctl_release(&(pcam->mctl));
 			if (rc < 0)

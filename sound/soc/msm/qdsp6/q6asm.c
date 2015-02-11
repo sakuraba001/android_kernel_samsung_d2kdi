@@ -709,7 +709,6 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 	uint32_t token;
 	unsigned long dsp_flags;
 	uint32_t *payload;
-	uint32_t wakeup_flag = 1;
 
 
 	if ((ac == NULL) || (data == NULL)) {
@@ -721,19 +720,15 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 			ac->session);
 		return -EINVAL;
 	}
-	if (atomic_read(&ac->nowait_cmd_cnt) > 0) {
-		pr_debug("%s: nowait_cmd_cnt %d\n",
-				__func__,
-				atomic_read(&ac->nowait_cmd_cnt));
-		atomic_dec(&ac->nowait_cmd_cnt);
-		wakeup_flag = 0;
-	}
 
 	payload = data->payload;
 
 	if (data->opcode == RESET_EVENTS) {
 		pr_debug("q6asm_callback: Reset event is received: %d %d apr[%p]\n",
 				data->reset_event, data->reset_proc, ac->apr);
+			if (ac->cb)
+				ac->cb(data->opcode, data->token,
+					(uint32_t *)data->payload, ac->priv);
 		apr_reset(ac->apr);
 		return 0;
 	}
@@ -769,7 +764,7 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 		case ASM_STREAM_CMD_OPEN_READWRITE:
 		case ASM_DATA_CMD_MEDIA_FORMAT_UPDATE:
 		case ASM_STREAM_CMD_SET_ENCDEC_PARAM:
-			if (atomic_read(&ac->cmd_state) && wakeup_flag) {
+			if (atomic_read(&ac->cmd_state)) {
 				atomic_set(&ac->cmd_state, 0);
 				wake_up(&ac->cmd_wait);
 			}
@@ -1413,7 +1408,6 @@ int q6asm_run_nowait(struct audio_client *ac, uint32_t flags,
 		pr_err("%s:Commmand run failed[%d]", __func__, rc);
 		return -EINVAL;
 	}
-	atomic_inc(&ac->nowait_cmd_cnt);
 	return 0;
 }
 
@@ -1573,6 +1567,67 @@ int q6asm_cfg_dual_mono_aac(struct audio_client *ac,
 	return 0;
 fail_cmd:
 	return -EINVAL;
+}
+
+int q6asm_set_encdec_chan_map(struct audio_client *ac,
+			uint32_t num_channels)
+{
+	struct asm_stream_cmd_encdec_channelmap chan_map;
+	u8 *channel_mapping;
+
+	int rc = 0;
+
+	pr_debug("%s: Session %d, num_channels = %d\n",
+			 __func__, ac->session, num_channels);
+
+	q6asm_add_hdr(ac, &chan_map.hdr, sizeof(chan_map), TRUE);
+
+	chan_map.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
+	chan_map.param_id = ASM_ENCDEC_DEC_CHAN_MAP;
+	chan_map.param_size = sizeof(struct asm_dec_chan_map);
+	chan_map.chan_map.num_channels = num_channels;
+
+	channel_mapping =
+		chan_map.chan_map.channel_mapping;
+
+	memset(channel_mapping, PCM_CHANNEL_NULL, MAX_CHAN_MAP_CHANNELS);
+	if (num_channels == 1)  {
+		channel_mapping[0] = PCM_CHANNEL_FL;
+	} else if (num_channels == 2) {
+		channel_mapping[0] = PCM_CHANNEL_FL;
+		channel_mapping[1] = PCM_CHANNEL_FR;
+	} else if (num_channels == 6) {
+		channel_mapping[0] = PCM_CHANNEL_FC;
+		channel_mapping[1] = PCM_CHANNEL_FL;
+		channel_mapping[2] = PCM_CHANNEL_FR;
+		channel_mapping[3] = PCM_CHANNEL_LB;
+		channel_mapping[4] = PCM_CHANNEL_RB;
+		channel_mapping[5] = PCM_CHANNEL_LFE;
+	} else {
+		pr_err("%s: ERROR.unsupported num_ch = %u\n", __func__,
+				num_channels);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &chan_map);
+	if (rc < 0) {
+		pr_err("%s:Command opcode[0x%x]paramid[0x%x] failed\n",
+				__func__, ASM_STREAM_CMD_SET_ENCDEC_PARAM,
+				ASM_ENCDEC_DEC_CHAN_MAP);
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s:timeout opcode[0x%x]\n", __func__,
+						chan_map.hdr.opcode);
+		rc = -ETIMEDOUT;
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return rc;
 }
 
 int q6asm_enc_cfg_blk_qcelp(struct audio_client *ac, uint32_t frames_per_buf,
@@ -3012,7 +3067,7 @@ uint64_t q6asm_get_session_time(struct audio_client *ac)
 		pr_err("APR handle NULL\n");
 		return -EINVAL;
 	}
-	q6asm_add_hdr(ac, &hdr, sizeof(hdr), FALSE);
+	q6asm_add_hdr(ac, &hdr, sizeof(hdr), TRUE);
 	hdr.opcode = ASM_SESSION_CMD_GET_SESSION_TIME;
 	atomic_set(&ac->time_flag, 1);
 
@@ -3152,7 +3207,6 @@ int q6asm_cmd_nowait(struct audio_client *ac, int cmd)
 		pr_err("%s:Commmand 0x%x failed\n", __func__, hdr.opcode);
 		goto fail_cmd;
 	}
-	atomic_inc(&ac->nowait_cmd_cnt);
 	return 0;
 fail_cmd:
 	return -EINVAL;
@@ -3238,24 +3292,16 @@ static int __init q6asm_init(void)
 #ifdef CONFIG_DEBUG_FS
 	out_buffer = kmalloc(OUT_BUFFER_SIZE, GFP_KERNEL);
 	out_dentry = debugfs_create_file("audio_out_latency_measurement_node",\
-				S_IFREG | S_IRUGO | S_IWUGO,\
+				S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,\
 				NULL, NULL, &audio_output_latency_debug_fops);
-	if (IS_ERR(out_dentry)) {
+	if (IS_ERR(out_dentry))
 		pr_err("debugfs_create_file failed\n");
-		kfree(out_buffer);
-		return PTR_ERR(out_dentry);
-	}
 	in_buffer = kmalloc(IN_BUFFER_SIZE, GFP_KERNEL);
 	in_dentry = debugfs_create_file("audio_in_latency_measurement_node",\
-				S_IFREG | S_IRUGO | S_IWUGO,\
+				S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,\
 				NULL, NULL, &audio_input_latency_debug_fops);
-	if (IS_ERR(in_dentry)) {
+	if (IS_ERR(in_dentry))
 		pr_err("debugfs_create_file failed\n");
-		kfree(in_buffer);
-		kfree(out_buffer);
-		debugfs_remove(out_dentry);
-		return PTR_ERR(out_dentry);
-	}
 #endif
 	return 0;
 }

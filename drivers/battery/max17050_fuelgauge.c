@@ -2004,18 +2004,6 @@ static void full_comp_work_handler(struct work_struct *work)
 	}
 }
 
-static irqreturn_t sec_jig_irq_thread(int irq, void *irq_data)
-{
-	struct sec_fuelgauge_info *fuelgauge = irq_data;
-
-	if (fuelgauge->pdata->check_jig_status())
-		fg_reset_capacity_by_jig_connection(fuelgauge->client);
-	else
-		dev_info(&fuelgauge->client->dev,
-				"%s: jig removed\n", __func__);
-	return IRQ_HANDLED;
-}
-
 bool sec_hal_fg_init(struct i2c_client *client)
 {
 	struct sec_fuelgauge_info *fuelgauge =
@@ -2047,21 +2035,6 @@ bool sec_hal_fg_init(struct i2c_client *client)
 
 	if (fuelgauge->pdata->check_jig_status())
 		fg_reset_capacity_by_jig_connection(client);
-	else {
-		if (fuelgauge->pdata->jig_irq) {
-			int ret;
-			ret = request_threaded_irq(fuelgauge->pdata->jig_irq,
-					NULL, sec_jig_irq_thread,
-					fuelgauge->pdata->jig_irq_attr,
-					"jig-irq", fuelgauge);
-			if (ret) {
-				dev_info(&fuelgauge->client->dev,
-					"%s: Failed to Reqeust IRQ\n",
-					__func__);
-			}
-		}
-
-	}
 
 	INIT_DELAYED_WORK(&fuelgauge->info.full_comp_work,
 		full_comp_work_handler);

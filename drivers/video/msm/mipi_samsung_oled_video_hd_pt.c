@@ -100,7 +100,7 @@ static char panel_cond_set_4_8[] = {
 	0x01, 0x81, 0xC1, 0x00, 0xC3,
 	0xF6, 0xF6, 0xC1
 };
-#elif defined(CONFIG_MACH_K2_KDI)
+#elif defined(CONFIG_MACH_M2_KDI)
 static char panel_cond_set_4_8[] = {
 	0xF8,
 	0x3D, 0x35, 0x00, 0x00, 0x00,
@@ -130,7 +130,7 @@ static char panel_cond_set_4_8[] = {
  */
 static char display_cond_set[] = {
 	0xF2,
-	0x80, 0x03, 0x35
+	0x80, 0x03, 0x0D
 };
 
 static char display_cond_set_cmc[] = {
@@ -447,7 +447,7 @@ static char GAMMA_SmartDimming_COND_SET[] = {
 };
 #endif
 
-#if defined(CONFIG_MACH_K2_KDI)
+#if defined(CONFIG_MACH_M2_KDI)
 static char panel_cond_aid_ref[] = {
 	0xF8,
 	0x3D, 0x35, 0x00, 0x00, 0x00,
@@ -841,8 +841,8 @@ static struct dsi_cmd_desc_LCD lcd_acl_table[] = {
 
 static struct dsi_cmd_desc_LCD lcd_acl_table_4_8[] = {
 	{0, "20", NULL},
-	{0, "30", NULL},
-	{0, "40", NULL},
+	{33, "30", &DSI_CMD_ACL_33},
+	{40, "40", &DSI_CMD_ACL_40},
 	{40, "50", &DSI_CMD_ACL_40},
 	{40, "60", &DSI_CMD_ACL_40},
 	{40, "70", &DSI_CMD_ACL_40},
@@ -868,7 +868,7 @@ static struct dsi_cmd_desc_LCD lcd_acl_table_4_8[] = {
 	{40, "270", &DSI_CMD_ACL_40},
 	{40, "280", &DSI_CMD_ACL_40},
 	{40, "290", &DSI_CMD_ACL_40},
-	{50, "300", &DSI_CMD_ACL_50},
+	{40, "300", &DSI_CMD_ACL_40},
 };
 
 
@@ -1284,7 +1284,7 @@ static int  aid_operation(int lux)
 		pr_info("%s LCD is 4.65 inch", __func__);
 	} else {/* 4.8 LCD_ID*/
 		if (lux == 0) {
-#if defined(CONFIG_MACH_K2_KDI)
+#if defined(CONFIG_MACH_M2_KDI)
 			panel_cond_aid_ref[1] = 0x3D;
 #else
 			panel_cond_aid_ref[1] = 0x19;
@@ -1293,7 +1293,7 @@ static int  aid_operation(int lux)
 			etc_cond_set3_aid_ref[9] = 0x40;
 			aid_status = 0;
 		} else if (lux >= 190) {
-#if defined(CONFIG_MACH_K2_KDI)
+#if defined(CONFIG_MACH_M2_KDI)
 			panel_cond_aid_ref[1] = 0x3D;
 #else
 			panel_cond_aid_ref[1] = 0x19;
@@ -1304,7 +1304,7 @@ static int  aid_operation(int lux)
 		} else if (lux >= 110) {
 			ratio = aid_below_110_ratio_table[9][1];
 
-#if defined(CONFIG_MACH_K2_KDI)
+#if defined(CONFIG_MACH_M2_KDI)
 			panel_cond_aid_ref[1] = 0x7D;
 #else
 			panel_cond_aid_ref[1] = 0x59;
@@ -1316,7 +1316,7 @@ static int  aid_operation(int lux)
 			index = (lux / 10) - 2;
 			ratio = aid_below_110_ratio_table[index][1];
 
-#if defined(CONFIG_MACH_K2_KDI)
+#if defined(CONFIG_MACH_M2_KDI)
 			panel_cond_aid_ref[1] = 0x7D;
 #else
 			panel_cond_aid_ref[1] = 0x59;
@@ -1504,11 +1504,11 @@ static int prepare_brightness_control_cmd_array(int lcd_type, int bl_level)
 	return cmds_send_flag;
 }
 static struct mipi_panel_data mipi_pd = {
-#if defined (CONFIG_MACH_K2_KDI)
-	.panel_name	= "AMS480GY10-0\n",
+#if defined (CONFIG_MACH_M2_KDI)
+        .panel_name     = "SMD_AMS480GY10-0\n",
 #else
 	.panel_name	= "SMD_AMS465GS0x\n",
-#endif	
+#endif
 	.ready_to_on	= {samsung_panel_ready_to_on_cmds
 				, ARRAY_SIZE(samsung_panel_ready_to_on_cmds)},
 	.ready_to_on_4_8 = {samsung_panel_ready_to_on_cmds_4_8
@@ -1595,14 +1595,6 @@ static int __init mipi_cmd_samsung_oled_qhd_pt_init(void)
 	pinfo.mode2_xres = 0;
 	pinfo.mode2_yres = 0;
 	pinfo.mode2_bpp = 0;
-	/*
-	 *
-	 * Panel's Horizontal input timing requirement is to
-	 * include dummy(pad) data of 200 clk in addition to
-	 * width and porch/sync width values
-	 */
-	pinfo.mipi.xres_pad = 0;
-	pinfo.mipi.yres_pad = 0;
 
 	pinfo.type = MIPI_VIDEO_PANEL;
 	pinfo.pdest = DISPLAY_1;
@@ -1627,7 +1619,7 @@ static int __init mipi_cmd_samsung_oled_qhd_pt_init(void)
 		pinfo.lcdc.v_front_porch = 53;
 	pinfo.lcdc.v_pulse_width = 1;
 	pinfo.lcdc.border_clr = 0;	/* blk */
-	pinfo.lcdc.underflow_clr = 0x0;	/* blue */
+	pinfo.lcdc.underflow_clr = 0x0;	/* blue => black */
 	pinfo.lcdc.hsync_skew = 0;
 	pinfo.bl_max = 255;
 	pinfo.bl_min = 1;
@@ -1675,6 +1667,7 @@ static int __init mipi_cmd_samsung_oled_qhd_pt_init(void)
 	pinfo.mipi.dma_trigger = DSI_CMD_TRIGGER_SW;
 	pinfo.mipi.frame_rate = 60;
 	pinfo.mipi.dsi_phy_db = &dsi_video_mode_phy_db;
+	pinfo.mipi.esc_byte_ratio = 4;
 
 	/*
 	*	To support NONE CMC & HAS CMC

@@ -10,6 +10,8 @@
  * published by the Free Software Foundation.
  */
 
+#define DEBUG
+
 #include <linux/battery/sec_charger.h>
 
 static int sec_chg_get_property(struct power_supply *psy,

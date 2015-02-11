@@ -33,7 +33,7 @@ static void sec_keyboard_power(struct work_struct *work)
 	struct sec_keyboard_drvdata *data = container_of(work,
 			struct sec_keyboard_drvdata, power_dwork.work);
 
-	if (UNKNOWN_KEYLAYOUT == data->kl) {
+	if (UNKOWN_KEYLAYOUT == data->kl) {
 		data->acc_power(3, false);
 		data->pre_connected = false;
 
@@ -87,7 +87,7 @@ static void sec_keyboard_process_data(struct work_struct *work)
 	unsigned char scan_code = data->scan_code;
 
 	/* keyboard driver need the contry code*/
-	if (data->kl == UNKNOWN_KEYLAYOUT) {
+	if (data->kl == UNKOWN_KEYLAYOUT) {
 		switch (scan_code) {
 		case US_KEYBOARD:
 			data->kl = US_KEYLAYOUT;
@@ -106,7 +106,7 @@ static void sec_keyboard_process_data(struct work_struct *work)
 			break;
 
 		default:
-			printk(KERN_DEBUG "[Keyboard] Unknown layout : %x\n",
+			printk(KERN_DEBUG "[Keyboard] Unkown layout : %x\n",
 				scan_code);
 			break;
 		}
@@ -158,12 +158,6 @@ static void sec_keyboard_process_data(struct work_struct *work)
 
 			if (keycode >= KEYBOARD_MIN
 				|| keycode <= KEYBOARD_MAX) {
-				if ((data->suspend_state)
-					&& (data->pressed[keycode] == 0)
-					&& (press == 0)) {
-					input_report_key(data->input_dev, \
-						data->keycode[keycode], 1);
-				}
 				data->pressed[keycode] = press;
 				input_report_key(data->input_dev,
 					data->keycode[keycode], press);
@@ -190,7 +184,7 @@ static int check_keyboard_dock(struct sec_keyboard_callbacks *cb, bool val)
 		cancel_delayed_work_sync(&data->power_dwork);
 		/* wakeup by keyboard dock */
 		if (data->pre_connected) {
-			if (UNKNOWN_KEYLAYOUT != data->pre_kl) {
+			if (UNKOWN_KEYLAYOUT != data->pre_kl) {
 				data->kl = data->pre_kl;
 				data->acc_power(3, true);
 				printk(KERN_DEBUG "[Keyboard] kl : %d\n",
@@ -198,7 +192,7 @@ static int check_keyboard_dock(struct sec_keyboard_callbacks *cb, bool val)
 				return 1;
 			}
 		} else
-			data->pre_kl = UNKNOWN_KEYLAYOUT;
+			data->pre_kl = UNKOWN_KEYLAYOUT;
 
 		data->pre_connected = true;
 
@@ -214,7 +208,7 @@ static int check_keyboard_dock(struct sec_keyboard_callbacks *cb, bool val)
 		/* try to get handshake data */
 		for (try_cnt = 0; try_cnt < max_cnt; try_cnt++) {
 			msleep(50);
-			if (data->kl != UNKNOWN_KEYLAYOUT) {
+			if (data->kl != UNKOWN_KEYLAYOUT) {
 				data->dockconnected = true;
 				break;
 			}
@@ -232,7 +226,7 @@ static int check_keyboard_dock(struct sec_keyboard_callbacks *cb, bool val)
 			data->dockconnected = false;
 			schedule_delayed_work(&data->power_dwork, HZ/2);
 
-			data->kl = UNKNOWN_KEYLAYOUT;
+			data->kl = UNKOWN_KEYLAYOUT;
 			release_all_keys(data);
 		}
 		return 0;
@@ -289,7 +283,7 @@ static int sec_keyboard_connect(struct serio *serio, struct serio_driver *drv)
 {
 	struct sec_keyboard_drvdata *data = container_of(drv,
 			struct sec_keyboard_drvdata, serio_driver);
-	printk(KERN_DEBUG "[Keyboard] %s\n", __func__);
+	printk(KERN_DEBUG "[Keyboard] %s", __func__);
 	data->serio = serio;
 	serio_set_drvdata(serio, data);
 	if (serio_open(serio, drv))
@@ -302,7 +296,7 @@ static int sec_keyboard_connect(struct serio *serio, struct serio_driver *drv)
 static void sec_keyboard_disconnect(struct serio *serio)
 {
 	struct sec_keyboard_drvdata *data = serio_get_drvdata(serio);
-	printk(KERN_DEBUG "[Keyboard] %s\n", __func__);
+	printk(KERN_DEBUG "[Keyboard] %s", __func__);
 	data->tx_ready = false;
 	serio_close(serio);
 }
@@ -313,7 +307,7 @@ static void keyboard_early_suspend(struct early_suspend *early_sus)
 	struct sec_keyboard_drvdata *data = container_of(early_sus,
 		struct sec_keyboard_drvdata, early_suspend);
 
-	if (data->kl != UNKNOWN_KEYLAYOUT) {
+	if (data->kl != UNKOWN_KEYLAYOUT) {
 		/*
 		if the command of the caps lock off is needed,
 		this command should be sent.
@@ -323,7 +317,6 @@ static void keyboard_early_suspend(struct early_suspend *early_sus)
 		release_all_keys(data);
 		sec_keyboard_tx(data, 0x10);	/* the idle mode */
 	}
-	data->suspend_state = 1;
 }
 
 static void keyboard_late_resume(struct early_suspend *early_sus)
@@ -331,10 +324,9 @@ static void keyboard_late_resume(struct early_suspend *early_sus)
 	struct sec_keyboard_drvdata *data = container_of(early_sus,
 		struct sec_keyboard_drvdata, early_suspend);
 
-	if (data->kl != UNKNOWN_KEYLAYOUT)
+	if (data->kl != UNKOWN_KEYLAYOUT)
 		printk(KERN_DEBUG "[Keyboard] %s\n", __func__);
 
-	data->suspend_state = 0;
 }
 #endif
 
@@ -371,11 +363,10 @@ static int __devinit sec_keyboard_probe(struct platform_device *pdev)
 	ddata->dockconnected = false;
 	ddata->pre_connected = false;
 	ddata->remap_key = 0;
-	ddata->kl = UNKNOWN_KEYLAYOUT;
+	ddata->kl = UNKOWN_KEYLAYOUT;
 	ddata->callbacks.check_keyboard_dock = check_keyboard_dock;
 	if (pdata->register_cb)
 		pdata->register_cb(&ddata->callbacks);
-	ddata->suspend_state = 0;
 
 	memcpy(ddata->keycode, sec_keycodes, sizeof(sec_keycodes));
 
@@ -487,7 +478,7 @@ static int sec_keyboard_suspend(struct platform_device *pdev,
 {
 	struct sec_keyboard_drvdata *data = platform_get_drvdata(pdev);
 
-	if (data->kl != UNKNOWN_KEYLAYOUT)
+	if (data->kl != UNKOWN_KEYLAYOUT)
 		sec_keyboard_tx(data, 0x10);
 
 	return 0;

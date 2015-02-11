@@ -24,8 +24,8 @@
 /* date     : 12/03/23                                      */
 /* date     : 12/03/06                                      */
 /* Model    : Aegis2                                        */
-/* 퓨 : 0xDD96 챨  0xDD96 I2C write   */
-/*            150ms delay   챨 I2C write 寧     */
+/* 주의사항 : 0xDD96 셋팅값을 만나면 0xDD96을 I2C write 하지 말고 */
+/*            150ms delay 후 다음 셋팅값을 I2C write해 주면 됨    */
 /* =================================================================*/
 
 static const u16 db8131m_common[] = {
@@ -793,7 +793,7 @@ static const u32 db8131m_vt_wifi_common[] = {
 };
 
 /*===========================================*/
-/* CAMERA_PREVIEW - 篤   枯  */
+/* CAMERA_PREVIEW - 촬영 후 프리뷰 복귀시 셋팅 */
 /*============================================*/
 
 static const u16 db8131m_preview[] = {

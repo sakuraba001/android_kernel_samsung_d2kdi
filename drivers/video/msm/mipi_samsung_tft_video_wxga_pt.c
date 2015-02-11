@@ -36,7 +36,7 @@ static struct mipi_dsi_phy_ctrl dsi_video_mode_phy_db = {
 	/* DSIPHY_PLL_CTRL */
 	.pll = { 0x00, /* common 8960 */
 	/* VCO */
-#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_TFT_VIDEO_WXGA_PT)
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 	0x0E, 0x30, 0xC0, /* panel specific */
 #else
 	0x40, 0x01, 0x19,
@@ -65,10 +65,8 @@ static int __init mipi_video_samsung_tft_wxga_pt_init(void)
 	pinfo.fb_num = 2; /* using two frame buffers */
 
 	/* bitclk */
-#if defined(CONFIG_MIPI_CLK_451)
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
 	pinfo.clk_rate = 451200000;
-#elif defined(CONFIG_MIPI_CLK_414)
-	pinfo.clk_rate = 414000000;
 #else
 	pinfo.clk_rate = 333350000;
 #endif
@@ -76,24 +74,17 @@ static int __init mipi_video_samsung_tft_wxga_pt_init(void)
 	 * this panel is operated by DE,
 	 * vsycn and hsync are ignored
 	 */
-#if defined(CONFIG_MIPI_CLK_451) /* espresso10 att */
-	pinfo.lcdc.h_front_porch = 48;	/* thfp */
-	pinfo.lcdc.h_back_porch = 48;	/* thb */
+
+#if defined(CONFIG_MACH_ESPRESSO10_ATT)
+	pinfo.lcdc.h_front_porch = 120;/* thfp */
+	pinfo.lcdc.h_back_porch = 120;	/* thb */
 	pinfo.lcdc.h_pulse_width = 2;	/* thpw */
 
-	pinfo.lcdc.v_front_porch = 64;	/* tvfp */
-	pinfo.lcdc.v_back_porch = 32;	/* tvb */
+	pinfo.lcdc.v_front_porch = 8;	/* tvfp */
+	pinfo.lcdc.v_back_porch = 7;	/* tvb */
 	pinfo.lcdc.v_pulse_width = 2;	/* tvpw */
-#elif defined(CONFIG_MIPI_CLK_414) /* espresso10 vzw & spr */
-	pinfo.lcdc.h_front_porch = 32;	/* thfp */
-	pinfo.lcdc.h_back_porch = 32;	/* thb */
-	pinfo.lcdc.h_pulse_width = 2;	/* thpw */
-
-	pinfo.lcdc.v_front_porch = 24;	/* tvfp */
-	pinfo.lcdc.v_back_porch = 24;	/* tvb */
-	pinfo.lcdc.v_pulse_width = 2;	/* tvpw */
-#else /* esrepsso7 */
-	pinfo.lcdc.h_front_porch = 50;	/* thfp */
+#else
+	pinfo.lcdc.h_front_porch = 50;/* thfp */
 	pinfo.lcdc.h_back_porch = 50;	/* thb */
 	pinfo.lcdc.h_pulse_width = 570;	/* thpw */
 

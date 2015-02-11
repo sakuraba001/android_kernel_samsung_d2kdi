@@ -136,7 +136,6 @@ struct machine_desc *machine_desc __initdata;
 const char *unit_name;
 EXPORT_SYMBOL(unit_name);
 #endif
-
 static char default_command_line[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
 static union { char c[4]; unsigned long l; } endian_test __initdata = { { 'l', '?', '?', 'b' } };
 #define ENDIANNESS ((char)endian_test.l)
@@ -895,7 +894,6 @@ void __init setup_arch(char **cmdline_p)
 #ifdef CONFIG_SEC_DEBUG_SUBSYS
 	unit_name = machine_name;
 #endif
-
 	if (mdesc->soft_reboot)
 		reboot_setup("s");
 

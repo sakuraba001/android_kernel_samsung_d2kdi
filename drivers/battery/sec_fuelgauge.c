@@ -10,6 +10,8 @@
  * published by the Free Software Foundation.
  */
 
+#define DEBUG
+
 #include <linux/battery/sec_fuelgauge.h>
 
 /* capacity is  0.1% unit */
@@ -73,7 +75,8 @@ static int sec_fg_get_property(struct power_supply *psy,
 				val->intval = 0;
 
 			/* get only integer part */
-			val->intval /= 10;
+			if (val->intval > 0)
+				val->intval /= 10;
 
 			/* (Only for atomic capacity)
 			 * In initial time, capacity_old is 0.

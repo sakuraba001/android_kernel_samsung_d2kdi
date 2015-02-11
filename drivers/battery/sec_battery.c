@@ -10,6 +10,8 @@
  * published by the Free Software Foundation.
  */
 
+#define DEBUG
+
 #include <linux/battery/sec_battery.h>
 
 char *sec_bat_charging_mode_str[] = {
@@ -493,7 +495,7 @@ static bool sec_bat_check_recharge(struct sec_battery_info *battery)
 			dev_info(battery->dev,
 				"%s: Re-charging by SOC (%d)\n",
 				__func__, battery->capacity);
-			goto check_recharge_check_count;
+			return true;
 		}
 
 		if ((battery->pdata->recharge_condition_type &
@@ -503,7 +505,7 @@ static bool sec_bat_check_recharge(struct sec_battery_info *battery)
 			dev_info(battery->dev,
 				"%s: Re-charging by average VCELL (%d)\n",
 				__func__, battery->voltage_avg);
-			goto check_recharge_check_count;
+			return true;
 		}
 
 		if ((battery->pdata->recharge_condition_type &
@@ -513,26 +515,11 @@ static bool sec_bat_check_recharge(struct sec_battery_info *battery)
 			dev_info(battery->dev,
 				"%s: Re-charging by VCELL (%d)\n",
 				__func__, battery->voltage_now);
-			goto check_recharge_check_count;
+			return true;
 		}
 	}
 
-	battery->recharge_check_cnt = 0;
 	return false;
-
-check_recharge_check_count:
-	if (battery->recharge_check_cnt <
-		battery->pdata->recharge_check_count)
-		battery->recharge_check_cnt++;
-	dev_dbg(battery->dev,
-		"%s: recharge count = %d\n",
-		__func__, battery->recharge_check_cnt);
-
-	if (battery->recharge_check_cnt >=
-		battery->pdata->recharge_check_count)
-		return true;
-	else
-		return false;
 }
 
 static bool sec_bat_voltage_check(struct sec_battery_info *battery)
@@ -1421,15 +1408,14 @@ static unsigned int sec_bat_get_polling_time(
 static bool sec_bat_is_short_polling(
 	struct sec_battery_info *battery)
 {
-	/* Change the full and short monitoring sequence
-	 * Originally, full monitoring was the last time of polling_count
-	 * But change full monitoring to first time
-	 * because temperature check is too late
-	 */
-	if (!battery->polling_short || battery->polling_count == 1)
-		return false;
-	else
+	if (battery->polling_short &&
+		((battery->polling_time /
+		battery->pdata->polling_time[
+		SEC_BATTERY_POLLING_TIME_BASIC])
+		> battery->polling_count))
 		return true;
+
+	return false;
 }
 
 static void sec_bat_update_polling_count(
@@ -1442,11 +1428,7 @@ static void sec_bat_update_polling_count(
 	if (battery->polling_short && battery->polling_in_sleep)
 		return;
 
-	if (battery->polling_short &&
-		((battery->polling_time /
-		battery->pdata->polling_time[
-		SEC_BATTERY_POLLING_TIME_BASIC])
-		> battery->polling_count))
+	if (sec_bat_is_short_polling(battery))
 		battery->polling_count++;
 	else
 		battery->polling_count = 1;	/* initial value = 1 */
@@ -1523,13 +1505,13 @@ static void sec_bat_monitor_work(
 	if (battery->polling_in_sleep)
 		battery->polling_in_sleep = false;
 
+	sec_bat_get_battery_info(battery);
+
 	/* 0. test mode */
 	if (battery->test_activated) {
 		dev_dbg(battery->dev, "%s: Test Mode\n", __func__);
 		goto continue_monitor;
 	}
-
-	sec_bat_get_battery_info(battery);
 
 	/* 1. battery check */
 	if (!sec_bat_battery_cable_check(battery))
@@ -1562,6 +1544,7 @@ continue_monitor:
 		sec_bat_health_str[battery->health],
 		battery->cable_type);
 
+	battery->test_activated = false;
 	power_supply_changed(&battery->psy_bat);
 
 	sec_bat_set_polling(battery);
@@ -1589,11 +1572,9 @@ static void sec_bat_cable_work(struct work_struct *work)
 	wake_lock_timeout(&battery->vbus_wake_lock, HZ * 5);
 
 	if (battery->cable_type == POWER_SUPPLY_TYPE_BATTERY) {
-		if (battery->status == POWER_SUPPLY_STATUS_FULL) {
-			val.intval = POWER_SUPPLY_TYPE_BATTERY;
+		if (battery->status == POWER_SUPPLY_STATUS_FULL)
 			psy_do_property("sec-fuelgauge", set,
 					POWER_SUPPLY_PROP_CHARGE_FULL, val);
-		}
 		battery->charging_mode = SEC_BATTERY_CHARGING_NONE;
 		battery->status = POWER_SUPPLY_STATUS_DISCHARGING;
 		battery->health = POWER_SUPPLY_HEALTH_GOOD;
@@ -1759,11 +1740,8 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
 			battery->factory_mode);
 		break;
+
 	case UPDATE:
-		break;
-	case TEST_MODE:
-		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
-			battery->test_activated);
 		break;
 
 	case BATT_EVENT_2G_CALL:
@@ -1907,12 +1885,6 @@ ssize_t sec_bat_store_attrs(
 	case UPDATE:
 		/* update battery info */
 		sec_bat_get_battery_info(battery);
-		break;
-	case TEST_MODE:
-		if (sscanf(buf, "%d\n", &x) == 1) {
-			battery->test_activated = x ? true : false;
-			ret = count;
-		}
 		break;
 
 	case BATT_EVENT_2G_CALL:

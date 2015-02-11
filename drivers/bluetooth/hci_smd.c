@@ -396,17 +396,10 @@ static int hci_smd_hci_register_dev(struct hci_smd_data *hsmd)
 
 	hdev = hsmd->hdev;
 
-	if (test_and_set_bit(HCI_REGISTER_SET, &hsmd->flags)) {
-		BT_ERR("HCI device registered already");
-		return 0;
-	} else
-		BT_INFO("HCI device registration is starting");
-
 	if (hci_register_dev(hdev) < 0) {
 		BT_ERR("Can't register HCI device");
 		hci_free_dev(hdev);
 		hsmd->hdev = NULL;
-		test_and_clear_bit(HCI_REGISTER_SET, &hsmd->flags);
 		return -ENODEV;
 	}
 	return 0;

@@ -140,7 +140,7 @@
 #include <linux/mfd/max77693.h>
 #include <linux/mfd/max77693-private.h>
 #endif
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH_236
 #include <linux/i2c/cypress_touchkey.h>
 #endif
 #include <linux/ion.h>
@@ -211,8 +211,8 @@ unsigned int gpio_table[][GPIO_REV_MAX] = {
 	/* ALS_INT */		{ 6 },
 #if defined(CONFIG_OPTICAL_GP2A) || defined(CONFIG_OPTICAL_GP2AP020A00F)  \
 	|| defined(CONFIG_SENSORS_CM36651)
-	/* ALS_SDA */	    { 101},
-	/* ALS_SCL */	    { 100},
+	/* ALS_SDA */	    { 12},
+	/* ALS_SCL */	    { 13},
 #endif
     /* TDMB_RST */      { 55},
     /* TDMB_EN  */      { 56 },
@@ -1033,18 +1033,18 @@ static void __init msm8960_allocate_memory_regions(void)
 {
 	msm8960_allocate_fb_region();
 }
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH_236
 static void cypress_power_onoff(int onoff)
 {
-	int ret, rc, rt;
-	static struct regulator *reg_l29, *reg_l10, *reg_l11;
+	int ret, rc;
+	static struct regulator *reg_l29, *reg_l10;
 
 	if (!reg_l29) {
 		reg_l29 = regulator_get(NULL, "8921_l29");
 		ret = regulator_set_voltage(reg_l29, 1800000, 1800000);
 
 		if (IS_ERR(reg_l29)) {
-			pr_err("could not get 8921_l29, ret = %ld\n",
+			pr_err("could not get 8921_l29, rc = %ld\n",
 				PTR_ERR(reg_l29));
 			return;
 		}
@@ -1055,19 +1055,8 @@ static void cypress_power_onoff(int onoff)
 		ret = regulator_set_voltage(reg_l10, 3000000, 3000000);
 
 		if (IS_ERR(reg_l10)) {
-			pr_err("could not get 8921_l10, ret = %ld\n",
+			pr_err("could not get 8921_l10, rc = %ld\n",
 				PTR_ERR(reg_l10));
-			return;
-		}
-	}
-
-	if (!reg_l11) {
-		reg_l11 = regulator_get(NULL, "8921_l11");
-		ret = regulator_set_voltage(reg_l11, 3000000, 3000000);
-
-		if (IS_ERR(reg_l11)) {
-			pr_err("could not get 8921_l11, ret = %ld\n",
-				PTR_ERR(reg_l11));
 			return;
 		}
 	}
@@ -1075,29 +1064,24 @@ static void cypress_power_onoff(int onoff)
 	if (onoff) {
 		ret = regulator_enable(reg_l29);
 		rc =  regulator_enable(reg_l10);
-		rt =  regulator_enable(reg_l11);
 		if (ret) {
-			pr_err("enable l29 failed, ret=%d\n", ret);
+			pr_err("enable l29 failed, rc=%d\n", ret);
 			return;
 		}
 		if (rc) {
-			pr_err("enable l10 failed, rc=%d\n", rc);
-			return;
-		}
-		if (rt) {
-			pr_err("enable l11 failed, rt=%d\n", rt);
+			pr_err("enable l10 failed, rc=%d\n", ret);
 			return;
 		}
 		pr_info("cypress_power_on is finished.\n");
 	} else {
+		ret = regulator_disable(reg_l29);
 		rc =  regulator_disable(reg_l10);
-		rt =  regulator_disable(reg_l11);
-		if (rc) {
-			pr_err("enable l10 failed, rc=%d\n", rc);
+		if (ret) {
+			pr_err("disable l29 failed, rc=%d\n", ret);
 			return;
 		}
-		if (rt) {
-			pr_err("enable l11 failed, rc=%d\n", rt);
+		if (rc) {
+			pr_err("enable l29failed, rc=%d\n", ret);
 			return;
 		}
 		pr_info("cypress_power_off is finished.\n");
@@ -1105,7 +1089,7 @@ static void cypress_power_onoff(int onoff)
 }
 
 static u8 touchkey_keycode[] = {KEY_MENU, KEY_BACK};
-static u8 touchkey_keycode_new[] = {KEY_MENU, KEY_BACK};
+static u8 touchkey_keycode_new[] = {KEY_BACK, KEY_MENU};
 
 static struct cypress_touchkey_platform_data cypress_touchkey_pdata = {
 	.gpio_int = GPIO_TOUCH_KEY_INT,
@@ -2102,8 +2086,8 @@ static struct vibrator_platform_data msm_8960_vibrator_pdata = {
 	.vib_model = HAPTIC_PWM,
 	.vib_pwm_gpio = GPIO_VIB_PWM,
 	.haptic_pwr_en_gpio = PMIC_GPIO_HAPTIC_PWR_EN,
-	.vib_en_gpio = PMIC_GPIO_VIB_ON,
-	.is_pmic_vib_en = 1,
+	.vib_en_gpio = GPIO_VIB_ON,
+	.is_pmic_vib_en = 0,
 	.is_pmic_haptic_pwr_en = 1,
 };
 static struct platform_device vibetonz_device = {
@@ -2195,8 +2179,8 @@ static struct platform_device opt_gp2a = {
 	/* compass */
 	static struct ext_slave_platform_data inv_mpu_ak8963_data = {
 	.bus		= EXT_SLAVE_BUS_PRIMARY,
-	.orientation = {-1, 0, 0,
-			0, -1, 0,
+	.orientation = {0, 1, 0,
+			-1, 0, 0,
 			0, 0, 1},
 	};
 
@@ -4281,6 +4265,10 @@ static struct platform_device msm_rpm_log_device = {
 };
 
 #ifdef CONFIG_SAMSUNG_JACK
+#define GPIO_EAR_DET		51
+#define PMIC_GPIO_SHORT_SENDEND		32
+#define PMIC_GPIO_EAR_MICBIAS_EN	3
+
 static struct sec_jack_zone jack_zones[] = {
 	[0] = {
 		.adc_high	= 3,
@@ -4327,25 +4315,11 @@ static struct sec_jack_buttons_zone jack_buttons_zones[] = {
 	},
 };
 
-#if defined(CONFIG_SAMSUNG_JACK_GNDLDET)
-static int get_sec_l_jack_state(void)
+static int get_sec_det_jack_state(void)
 {
-	return gpio_get_value_cansleep(GPIO_G_DET) ^ 1;
+	return (gpio_get_value_cansleep(GPIO_EAR_DET)) ^ 1;
 }
-#endif
 
-#ifdef CONFIG_SAMSUNG_JACK_GNDLDET_KOR
-static int get_sec_det_jack_state(void)
-{
-	return (gpio_get_value_cansleep(GPIO_EAR_DET)
-				| gpio_get_value_cansleep(GPIO_G_DET)) ^ 1;
-}
-#else
-static int get_sec_det_jack_state(void)
-{
-	return gpio_get_value_cansleep(GPIO_EAR_DET) ^ 1;
-}
-#endif
 static int get_sec_send_key_state(void)
 {
 	struct pm_gpio ear_micbiase = {
@@ -4360,11 +4334,12 @@ static int get_sec_send_key_state(void)
 	};
 
 	if (get_sec_det_jack_state()) {
-		gpio_tlmm_config(GPIO_CFG(GPIO_EAR_MICBIAS_EN,
-			GPIOMUX_FUNC_GPIO,	GPIO_CFG_OUTPUT,
-			GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
-			GPIO_CFG_ENABLE);
-		gpio_set_value_cansleep(GPIO_EAR_MICBIAS_EN, 1);
+		pm8xxx_gpio_config(
+			PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_EAR_MICBIAS_EN),
+			&ear_micbiase);
+		gpio_set_value_cansleep(
+			PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_EAR_MICBIAS_EN),
+			1);
 	}
 	return (gpio_get_value_cansleep(
 		PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_SHORT_SENDEND))) ^ 1;
@@ -4375,7 +4350,9 @@ static int get_sec_send_key_state(void)
 static void set_sec_micbias_state(bool state)
 {
 	pr_info("sec_jack: ear micbias %s\n", state ? "on" : "off");
-	gpio_set_value_cansleep(GPIO_EAR_MICBIAS_EN, state);
+	gpio_set_value_cansleep(
+		PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_EAR_MICBIAS_EN),
+		state);
 }
 
 static int sec_jack_get_adc_value(void)
@@ -4398,9 +4375,6 @@ static int sec_jack_get_adc_value(void)
 }
 
 static struct sec_jack_platform_data sec_jack_data = {
-#if defined(CONFIG_SAMSUNG_JACK_GNDLDET)
-	.get_l_jack_state	= get_sec_l_jack_state,
-#endif
 	.get_det_jack_state	= get_sec_det_jack_state,
 	.get_send_key_state	= get_sec_send_key_state,
 	.set_micbias_state	= set_sec_micbias_state,
@@ -4410,9 +4384,6 @@ static struct sec_jack_platform_data sec_jack_data = {
 	.buttons_zones		= jack_buttons_zones,
 	.num_buttons_zones	= ARRAY_SIZE(jack_buttons_zones),
 	.det_int		= MSM_GPIO_TO_INT(GPIO_EAR_DET),
-#ifdef CONFIG_SAMSUNG_JACK_GNDLDET_KOR
-	.g_det_int		= MSM_GPIO_TO_INT(GPIO_G_DET),
-#endif
 	.send_int		= PM8921_GPIO_IRQ(PM8921_IRQ_BASE,
 						PMIC_GPIO_SHORT_SENDEND),
 };
@@ -4639,7 +4610,7 @@ static struct platform_device *m2_skt_devices[] __initdata = {
 #ifdef CONFIG_USB_SWITCH_FSA9485
 	&fsa_i2c_gpio_device,
 #endif
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH_236
 	&touchkey_i2c_gpio_device,
 #endif
 #ifdef CONFIG_BATTERY_MAX17040
@@ -5035,7 +5006,7 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		ARRAY_SIZE(max77693_i2c_board_info),
 	},
 #endif
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH_236
 	{
 	I2C_SURF | I2C_FFA | I2C_FLUID,
 	MSM_TOUCHKEY_I2C_BUS_ID,
@@ -5255,21 +5226,8 @@ static int secjack_gpio_init()
 		return rc;
 	}
 
-	gpio_tlmm_config(GPIO_CFG(GPIO_EAR_DET, GPIOMUX_FUNC_GPIO,
-		GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
-		GPIO_CFG_ENABLE);
-
-	rc = gpio_request(GPIO_G_DET, "G_DET");
-	if (rc) {
-		pr_err("%s: G_DET gpio %d request"
-				"failed\n", __func__, GPIO_G_DET);
-		return rc;
-	}
-
-	gpio_tlmm_config(GPIO_CFG(GPIO_G_DET, GPIOMUX_FUNC_GPIO,
-		GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
-		GPIO_CFG_ENABLE);
-
+	gpio_tlmm_config(GPIO_CFG(GPIO_EAR_DET, 0, GPIO_CFG_INPUT,
+		GPIO_CFG_NO_PULL, GPIO_CFG_2MA), 1);
 	rc = pm8xxx_gpio_config(
 		PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_SHORT_SENDEND),
 					&short_sendend);
@@ -5277,17 +5235,13 @@ static int secjack_gpio_init()
 		pr_err("%s PMIC_GPIO_SHORT_SENDEND config failed\n", __func__);
 		return rc;
 	}
-
-	rc = gpio_request(GPIO_EAR_MICBIAS_EN, "EAR_MICBIAS_EN");
+	rc = pm8xxx_gpio_config(
+			PM8921_GPIO_PM_TO_SYS(PMIC_GPIO_EAR_MICBIAS_EN),
+			&ear_micbiase);
 	if (rc) {
-		pr_err("%s: EAR_MICBIAS_EN gpio %d request"
-				"failed\n", __func__, GPIO_EAR_MICBIAS_EN);
+		pr_err("%s PMIC_GPIO_EAR_MICBIAS_EN config failed\n", __func__);
 		return rc;
 	}
-
-	gpio_tlmm_config(GPIO_CFG(GPIO_EAR_MICBIAS_EN, GPIOMUX_FUNC_GPIO,
-		GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
-		GPIO_CFG_ENABLE);
 
 	return rc;
 }

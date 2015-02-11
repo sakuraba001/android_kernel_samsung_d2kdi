@@ -36,7 +36,7 @@ struct cypress_touchkey_platform_data {
 #define CYPRESS_IDAC_MENU 0x06
 #define CYPRESS_IDAC_BACK 0x07
 
-#elif defined(CONFIG_MACH_AEGIS2) || defined(CONFIG_MACH_SUPERIORLTE_SKT)
+#elif defined(CONFIG_MACH_AEGIS2)
 #define CYPRESS_DIFF_BACK      0x10
 #define CYPRESS_DIFF_HOME      0x0E
 #define CYPRESS_DIFF_RECENT    0x0C

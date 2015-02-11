@@ -66,7 +66,6 @@ struct sr030pc50_work {
 
 struct sr030pc50_exif_data {
 	unsigned short shutterspeed;
-	unsigned short iso;
 };
 
 static struct  i2c_client *sr030pc50_client;
@@ -498,14 +497,12 @@ static struct device_attribute sr030pc50_cameraflash_attr = {
 };
 #endif
 
-static int sr030pc50_set_exif(void)
+static int sr030pc50_exif_shutter_speed(void)
 {
 	int err = 0;
 	u8 read_value1 = 0;
 	u8 read_value2 = 0;
 	u8 read_value3 = 0;
-	u8 read_value4 = 0;
-	unsigned short gain_value = 0;
 
 	sr030pc50_i2c_write_16bit(0x0320);
 	sr030pc50_i2c_read(0x80, &read_value1);
@@ -515,20 +512,6 @@ static int sr030pc50_set_exif(void)
 		+ (read_value2 << 11) + (read_value3 << 3));
 
 	CAM_DEBUG("Exposure time = %d\n", sr030pc50_exif->shutterspeed);
-	sr030pc50_i2c_write_16bit(0x0320);
-	sr030pc50_i2c_read(0xb0, &read_value4);
-	gain_value = (read_value4 / 16) * 1000;
-
-	if (gain_value < 875)
-		sr030pc50_exif->iso = 50;
-	else if (gain_value < 1750)
-		sr030pc50_exif->iso = 100;
-	else if (gain_value < 4625)
-		sr030pc50_exif->iso = 200;
-	else
-		sr030pc50_exif->iso = 400;
-
-	CAM_DEBUG("ISO = %d\n", sr030pc50_exif->iso);
 	return err;
 }
 
@@ -543,7 +526,6 @@ static int sr030pc50_get_exif(int exif_cmd, unsigned short value2)
 		break;
 
 	case EXIF_ISO:
-		val = sr030pc50_exif->iso;
 		break;
 
 	default:
@@ -592,7 +574,7 @@ void sr030pc50_set_capture(void)
 	CAM_DEBUG("");
 	sr030pc50_ctrl->op_mode = CAMERA_MODE_CAPTURE;
 	/*SR030PC50_WRT_LIST(sr030pc50_capture);*/
-	sr030pc50_set_exif();
+	sr030pc50_exif_shutter_speed();
 }
 
 static int32_t sr030pc50_sensor_setting(int update_type, int rt)

@@ -27,6 +27,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
+ * This is Modified by Samsung Electronics
+ * Taewan Kim <taewan95.kim@samsung.com>
+ *
  */
 
 #include <linux/module.h>
@@ -35,31 +38,14 @@
 #include <linux/oom.h>
 #include <linux/sched.h>
 #include <linux/notifier.h>
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-#include <linux/swap.h>
-#include <linux/device.h>
-#include <linux/err.h>
-#include <linux/mm_inline.h>
-#endif /* CONFIG_ZRAM_FOR_ANDROID */
 #include <linux/memory.h>
 #include <linux/memory_hotplug.h>
 
 #define ENHANCED_LMK_ROUTINE
 
 #ifdef ENHANCED_LMK_ROUTINE
-#define LOWMEM_DEATHPENDING_DEPTH 5
-#define LOWMEM_MAXIMASION_KILL_LEVEL 9
-
-static int adj_killed_level_size = 6;
-static int adj_killed_level_list[6] = {
-	2,
-	2,
-	2,
-	2,
-	2,
-	2
-};
-#endif /* ENHANCED_LMK_ROUTINE */
+#define LOWMEM_DEATHPENDING_DEPTH 3
+#endif
 
 static uint32_t lowmem_debug_level = 2;
 static int lowmem_adj[6] = {
@@ -76,36 +62,6 @@ static size_t lowmem_minfree[6] = {
 	16 * 1024,	/* 64MB */
 };
 static int lowmem_minfree_size = 4;
-
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-static struct class *lmk_class;
-static struct device *lmk_dev;
-static int lmk_kill_pid = 0;
-static int lmk_kill_ok = 0;
-
-extern atomic_t optimize_comp_on;
-
-extern int isolate_lru_page_compcache(struct page *page);
-extern void putback_lru_page(struct page *page);
-extern unsigned int zone_id_shrink_pagelist(struct zone *zone_id,struct list_head *page_list);
-
-#define lru_to_page(_head) (list_entry((_head)->prev, struct page, lru))
-
-#define SWAP_PROCESS_DEBUG_LOG 0
-/* free RAM 8M(2048 pages) */
-#define CHECK_FREE_MEMORY 2048
-/* free swap (10240 pages) */
-#define CHECK_FREE_SWAPSPACE  10240
-unsigned int check_free_memory = 0;
-
-
-enum pageout_io {
-	PAGEOUT_IO_ASYNC,
-	PAGEOUT_IO_SYNC,
-};
-
-
-#endif /* CONFIG_ZRAM_FOR_ANDROID */
 
 static unsigned int offlining;
 #ifdef ENHANCED_LMK_ROUTINE
@@ -192,8 +148,6 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int selected_tasksize[LOWMEM_DEATHPENDING_DEPTH] = {0,};
 	int selected_oom_adj[LOWMEM_DEATHPENDING_DEPTH] = {OOM_ADJUST_MAX,};
 	int all_selected_oom = 0;
-	int max_selected_oom_idx = 0;
-	int lowmem_depthpend_size = LOWMEM_DEATHPENDING_DEPTH;
 #else
 	int selected_tasksize = 0;
 	int selected_oom_adj;
@@ -226,7 +180,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 #ifdef ENHANCED_LMK_ROUTINE
 	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
 		if (lowmem_deathpending[i] &&
-			time_before_eq(jiffies, lowmem_deathpending_timeout))
+	    time_before_eq(jiffies, lowmem_deathpending_timeout))
 			return 0;
 	}
 #else
@@ -243,18 +197,9 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		if (other_free < lowmem_minfree[i] &&
 		    other_file < lowmem_minfree[i]) {
 			min_adj = lowmem_adj[i];
-#ifdef ENHANCED_LMK_ROUTINE
-			lowmem_depthpend_size = adj_killed_level_list[i];
-			if (LOWMEM_DEATHPENDING_DEPTH < lowmem_depthpend_size)
-				lowmem_depthpend_size = LOWMEM_DEATHPENDING_DEPTH;
-#endif
 			break;
 		}
 	}
-
-	if (min_adj == OOM_ADJUST_MAX + 1)
-		return 0;
-
 	if (sc->nr_to_scan > 0)
 		lowmem_print(3, "lowmem_shrink %lu, %x, ofree %d %d, ma %d\n",
 			     sc->nr_to_scan, sc->gfp_mask, other_free, other_file,
@@ -270,14 +215,8 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	}
 
 #ifdef ENHANCED_LMK_ROUTINE
-	if (min_adj > LOWMEM_MAXIMASION_KILL_LEVEL)
-		min_adj = LOWMEM_MAXIMASION_KILL_LEVEL;
-
-	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
+	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++)
 		selected_oom_adj[i] = min_adj;
-		selected[i] = NULL;
-		lowmem_deathpending[i] = NULL;
-	}
 #else
 	selected_oom_adj = min_adj;
 #endif
@@ -287,9 +226,6 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		struct mm_struct *mm;
 		struct signal_struct *sig;
 		int oom_adj;
-#ifdef ENHANCED_LMK_ROUTINE
-		int is_exist_oom_task = 0;
-#endif
 
 		task_lock(p);
 		mm = p->mm;
@@ -309,40 +245,27 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			continue;
 
 #ifdef ENHANCED_LMK_ROUTINE
-		if (all_selected_oom < lowmem_depthpend_size) {
-			for (i = 0; i < lowmem_depthpend_size; i++) {
-				if (!selected[i]) {
-					is_exist_oom_task = 1;
-					max_selected_oom_idx = i;
-					break;
-				}
-			}
-		} else if ( selected_oom_adj[max_selected_oom_idx] < oom_adj ||
-			(selected_oom_adj[max_selected_oom_idx] == oom_adj &&
-			selected_tasksize[max_selected_oom_idx] < tasksize)) {
-			is_exist_oom_task = 1;
-		}
+		for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
+			if (all_selected_oom >= LOWMEM_DEATHPENDING_DEPTH) {
+				if (oom_adj < selected_oom_adj[i])
+					continue;
+				if (oom_adj == selected_oom_adj[i] &&
+					tasksize <= selected_tasksize[i])
+					continue;
+			} else if (selected[i])
+				continue;
 
-		if (is_exist_oom_task) {
-			selected[max_selected_oom_idx] = p;
-			selected_tasksize[max_selected_oom_idx] = tasksize;
-			selected_oom_adj[max_selected_oom_idx] = oom_adj;
+			selected[i] = p;
+			selected_tasksize[i] = tasksize;
+			selected_oom_adj[i] = oom_adj;
 
-			if (all_selected_oom < lowmem_depthpend_size)
+			if (all_selected_oom < LOWMEM_DEATHPENDING_DEPTH)
 				all_selected_oom++;
+			lowmem_print(2, "select %d (%s), adj %d, size %d,"
+			     "to kill\n",
+			     p->pid, p->comm, oom_adj, tasksize);
 
-			if (all_selected_oom >= lowmem_depthpend_size) {
-				for (i = 0; i < lowmem_depthpend_size; i++) {
-					if (selected_oom_adj[i] < selected_oom_adj[max_selected_oom_idx])
-						max_selected_oom_idx = i;
-					else if (selected_oom_adj[i] == selected_oom_adj[max_selected_oom_idx] &&
-						selected_tasksize[i] < selected_tasksize[max_selected_oom_idx])
-						max_selected_oom_idx = i;
-				}
-			}
-
-			/* lowmem_print(2, "select %d (%s), adj %d, size %d, to kill\n",
-				p->pid, p->comm, oom_adj, tasksize); */
+			break;
 		}
 #else
 		if (selected) {
@@ -361,12 +284,12 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 #endif
 	}
 #ifdef ENHANCED_LMK_ROUTINE
-	for (i = 0; i < lowmem_depthpend_size; i++) {
+	for (i = 0; i < LOWMEM_DEATHPENDING_DEPTH; i++) {
 		if (selected[i]) {
-			lowmem_print(1, "send sigkill to %d (%s), adj %d, size %d dsize %d\n",
-				selected[i]->pid, selected[i]->comm,
-				selected_oom_adj[i], selected_tasksize[i],
-				lowmem_depthpend_size);
+			lowmem_print(1, "send sigkill to %d (%s), adj %d,"
+				     "size %d\n",
+				     selected[i]->pid, selected[i]->comm,
+				     selected_oom_adj[i], selected_tasksize[i]);
 			lowmem_deathpending[i] = selected[i];
 			lowmem_deathpending_timeout = jiffies + HZ;
 			force_sig(SIGKILL, selected[i]);
@@ -395,232 +318,10 @@ static struct shrinker lowmem_shrinker = {
 	.seeks = DEFAULT_SEEKS * 16
 };
 
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-/*
- * zone_id_shrink_pagelist() clear page flags,
- * update the memory zone status, and swap pagelist
- */
-
-static unsigned int shrink_pages(struct mm_struct *mm,
-				 struct list_head *zone0_page_list,
-				 struct list_head *zone1_page_list,
-				 unsigned int num_to_scan)
-{
-	unsigned long addr;
-	unsigned int isolate_pages_countter = 0;
-
-	struct vm_area_struct *vma = mm->mmap;
-	while (vma != NULL) {
-
-		for (addr = vma->vm_start; addr < vma->vm_end;
-		     addr += PAGE_SIZE) {
-			struct page *page;
-			/*get the page address from virtual memory address */
-			page = follow_page(vma, addr, FOLL_GET);
-
-			if (page && !IS_ERR(page)) {
-
-				put_page(page);
-				/* only moveable, anonymous and not dirty pages can be swapped  */
-				if ((!PageUnevictable(page))
-				    && (!PageDirty(page)) && ((PageAnon(page)))
-				    && (0 == page_is_file_cache(page))) {
-					switch (page_zone_id(page)) {
-					case 0:
-						if (!isolate_lru_page_compcache(page)) {
-							/* isolate page from LRU and add to temp list  */
-							/*create new page list, it will be used in shrink_page_list */
-							list_add_tail(&page->lru, zone0_page_list);
-							isolate_pages_countter++;
-						}
-						break;
-					case 1:
-						if (!isolate_lru_page_compcache(page)) {
-							/* isolate page from LRU and add to temp list  */
-							/*create new page list, it will be used in shrink_page_list */
-							list_add_tail(&page->lru, zone1_page_list);
-							isolate_pages_countter++;
-						}
-						break;
-					default:
-						break;
-					}
-				}
-			}
-
-			if (isolate_pages_countter >= num_to_scan) {
-				return isolate_pages_countter;
-			}
-		}
-
-		vma = vma->vm_next;
-	}
-
-	return isolate_pages_countter;
-}
-
-/*
- * swap_application_pages() will search the
- * pages which can be swapped, then call
- * zone_id_shrink_pagelist to update zone
- * status
- */
-static unsigned int swap_pages(struct list_head *zone0_page_list,
-								struct list_head *zone1_page_list)
-{
-        struct zone *zone_id_0 = &NODE_DATA(0)->node_zones[0];
-        struct zone *zone_id_1 = &NODE_DATA(0)->node_zones[1];
-	unsigned int pages_counter = 0;
-
-	/*if the page list is not empty, call zone_id_shrink_pagelist to update zone status */
-	if ((zone_id_0) && (!list_empty(zone0_page_list))) {
-		pages_counter +=
-		    zone_id_shrink_pagelist(zone_id_0, zone0_page_list);
-	}
-	if ((zone_id_1) && (!list_empty(zone1_page_list))) {
-		pages_counter +=
-		    zone_id_shrink_pagelist(zone_id_1, zone1_page_list);
-	}
-	return pages_counter;
-}
-
-static ssize_t lmk_state_show(struct device *dev,
-			      struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%d,%d\n", lmk_kill_pid, lmk_kill_ok);
-}
-
-/*
- * lmk_state_store() will called by framework,
- * the framework will send the pid of process that need to be swapped
- */
-static ssize_t lmk_state_store(struct device *dev,
-			       struct device_attribute *attr,
-			       const char *buf, size_t size)
-{
-	sscanf(buf, "%d,%d", &lmk_kill_pid, &lmk_kill_ok);
-
-	/* if the screen on, the optimized compcache will stop */
-	if (atomic_read(&optimize_comp_on) != 1)
-		return size;
-
-	if (lmk_kill_ok == 1) {
-		struct task_struct *p;
-		struct task_struct *selected = NULL;
-		struct sysinfo ramzswap_info = { 0 };
-		struct mm_struct *mm_scan = NULL;
-
-		/*
-		 * check the free RAM and swap area,
-		 * stop the optimized compcache in cpu idle case;
-		 * leave some swap area for using in low memory case
-		 */
-		si_swapinfo(&ramzswap_info);
-		si_meminfo(&ramzswap_info);
-
-		if ((ramzswap_info.freeswap < CHECK_FREE_SWAPSPACE) ||
-		    (ramzswap_info.freeram < check_free_memory)) {
-#if SWAP_PROCESS_DEBUG_LOG > 0
-			printk("idletime compcache is ignored : free RAM %lu, free swap %lu\n",
-				ramzswap_info.freeram, ramzswap_info.freeswap);
-#endif
-			lmk_kill_ok = 0;
-			return size;
-		}
-
-		read_lock(&tasklist_lock);
-		for_each_process(p) {
-			if ((p->pid == lmk_kill_pid) &&
-			    (__task_cred(p)->uid > 10000)) {
-				task_lock(p);
-				selected = p;
-				if (!selected->mm || !selected->signal) {
-
-				task_unlock(p);
-				selected = NULL;
-				break;
-				}
-				mm_scan = selected->mm;
-				if (mm_scan) {
-					if (selected->flags & PF_KTHREAD)
-						mm_scan = NULL;
-					else
-						atomic_inc(&mm_scan->mm_users);
-				}
-				task_unlock(selected);
-
-#if SWAP_PROCESS_DEBUG_LOG > 0
-				printk
-				    ("idletime compcache: swap process pid %d, name %s, oom %d, task_size %ld\n",
-				     p->pid, p->comm, p->signal->oom_adj,
-				     get_mm_rss(p->mm));
-#endif
-				break;
-			}
-		}
-		read_unlock(&tasklist_lock);
-
-		if (mm_scan) {
-			LIST_HEAD(zone0_page_list);
-			LIST_HEAD(zone1_page_list);
-			int pages_tofree = 0, pages_freed = 0;
-
-			down_read(&mm_scan->mmap_sem);
-			pages_tofree =
-			shrink_pages(mm_scan, &zone0_page_list,
-					&zone1_page_list, 0x7FFFFFFF);
-			up_read(&mm_scan->mmap_sem);
-			mmput(mm_scan);
-			pages_freed =
-			    swap_pages(&zone0_page_list,
-				       &zone1_page_list);
-			lmk_kill_ok = 0;
-
-		}
-	}
-
-	return size;
-}
-
-static DEVICE_ATTR(lmk_state, 0666, lmk_state_show, lmk_state_store);
-
-
-#endif /* CONFIG_ZRAM_FOR_ANDROID */
-
 static int __init lowmem_init(void)
 {
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-	struct zone *zone;
-	unsigned int high_wmark = 0;
-#endif
-
 	task_free_register(&task_nb);
 	register_shrinker(&lowmem_shrinker);
-
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-	for_each_zone(zone) {
-		if (high_wmark < zone->watermark[WMARK_HIGH])
-			high_wmark = zone->watermark[WMARK_HIGH];
-	}
-	check_free_memory = (high_wmark != 0) ? high_wmark : CHECK_FREE_MEMORY;
-
-	lmk_class = class_create(THIS_MODULE, "lmk");
-	if (IS_ERR(lmk_class)) {
-		printk(KERN_ERR "Failed to create class(lmk)\n");
-		return 0;
-	}
-	lmk_dev = device_create(lmk_class, NULL, 0, NULL, "lowmemorykiller");
-	if (IS_ERR(lmk_dev)) {
-		printk(KERN_ERR
-		       "Failed to create device(lowmemorykiller)!= %ld\n",
-		       IS_ERR(lmk_dev));
-		return 0;
-	}
-	if (device_create_file(lmk_dev, &dev_attr_lmk_state) < 0)
-		printk(KERN_ERR "Failed to create device file(%s)!\n",
-		       dev_attr_lmk_state.attr.name);
-#endif /* CONFIG_ZRAM_FOR_ANDROID */
-
 #ifdef CONFIG_MEMORY_HOTPLUG
 	hotplug_memory_notifier(lmk_hotplug_callback, 0);
 #endif
@@ -639,11 +340,6 @@ module_param_array_named(adj, lowmem_adj, int, &lowmem_adj_size,
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
-
-#ifdef ENHANCED_LMK_ROUTINE
-module_param_array_named(adj_killed_level, adj_killed_level_list, uint, &adj_killed_level_size,
-			S_IRUGO | S_IWUSR);
-#endif
 
 module_init(lowmem_init);
 module_exit(lowmem_exit);

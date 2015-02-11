@@ -11369,14 +11369,23 @@ struct s5k5ccgx_short_t s5k5ccgx_effect_sepia[] = {
 
 struct s5k5ccgx_short_t s5k5ccgx_effect_negative_mono[] = {
 {0xFCFC, 0xD000},
+{0x0028, 0x7000},
+{0x002A, 0x01E2},
+{0x0F12, 0x0002},
 };
 
 struct s5k5ccgx_short_t s5k5ccgx_effect_aqua[] = {
 {0xFCFC, 0xD000},
+{0x0028, 0x7000},
+{0x002A, 0x01E2},
+{0x0F12, 0x0005},
 };
 
 struct s5k5ccgx_short_t s5k5ccgx_effect_sketch[] = {
 {0xFCFC, 0xD000},
+{0x0028, 0x7000},
+{0x002A, 0x01E2},
+{0x0F12, 0x0006},
 };
 
 struct s5k5ccgx_short_t s5k5ccgx_wb_auto[] = {

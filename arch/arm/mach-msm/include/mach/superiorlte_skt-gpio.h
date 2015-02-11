@@ -22,8 +22,7 @@
 
 /* MSM8960 GPIO */
 #define GPIO_MDP_VSYNC			0
-#define GPIO_MHL_RST			-1
-#define GPIO_G_DET			1
+#define GPIO_MHL_RST			1
 #define GPIO_MSM_FLASH_CNTL_EN		2
 #define GPIO_CAM_MCLK2			2 /* VT MCLK */
 #define GPIO_MSM_FLASH_NOW		3
@@ -44,8 +43,7 @@
 #define GPIO_IF_PMIC_IRQ		14
 #endif
 #define GPIO_MAIN_MIC_BIAS		18
-#define GPIO_MHL_EN			-1
-#define GPIO_EAR_MICBIAS_EN			19
+#define GPIO_MHL_EN			19
 #define GPIO_I2C_DATA_CAM		20
 #define GPIO_I2C_CLK_CAM		21
 #define GPIO_FUELGAUGE_I2C_SDA		24
@@ -77,7 +75,7 @@
 #define GPIO_CAM_A_EN			46
 #define GPIO_HAPTIC_PWR_EN		47 /* < BOARD_REV08 */
 
-#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
+#ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH_236
 #define GPIO_TOUCH_KEY_INT		42
 #define GPIO_TOUCHKEY_SCL		47
 #define GPIO_TOUCHKEY_SDA		48
@@ -126,8 +124,7 @@
 #ifdef CONFIG_S5K6A3YX
 #define GPIO_VT_CAM_SEN_DET		98
 #endif
-#define GPIO_MHL_INT			-1
-#define GPIO_EAR_DET			99
+#define GPIO_MHL_INT			99
 
 #define GPIO_NFC_IRQ			106
 #define ISP_RESET			107
@@ -140,7 +137,7 @@
 #define PMIC_MPP_FLASH_LED_UNLOCK       4
 
 /* PMIC8921 GPIO */
-#define PMIC_GPIO_VIB_ON                4
+#define PMIC_GPIO_VIB_ON                -1
 #ifdef CONFIG_LEDS_MAX77693
 #define PMIC_GPIO_TORCH_EN          4
 #define PMIC_GPIO_FLASH_EN          5
@@ -161,7 +158,6 @@
 #define PMIC_GPIO_OTG_EN		-1 /* < BOARD_REV08 */
 #define PMIC_GPIO_HAPTIC_PWR_EN		22
 #define PMIC_GPIO_HALL_SW_N		23
-#define PMIC_GPIO_SHORT_SENDEND		32
 #define PMIC_GPIO_CODEC_RST		38
 #define PMIC_GPIO_OTG_POWER		42
 #define PMIC_GPIO_LCD_RST		43

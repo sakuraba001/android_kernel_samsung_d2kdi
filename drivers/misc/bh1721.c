@@ -298,6 +298,7 @@ static ssize_t bh1721fvc_light_sensor_lux_show(struct device *dev,
 	u16 lux;
 	int retry;
 	int err;
+	u32 result;
 	struct bh1721fvc_data *bh1721fvc = dev_get_drvdata(dev);
 	if (bh1721fvc->state == POWER_DOWN) {
 		err =
@@ -323,9 +324,20 @@ static ssize_t bh1721fvc_light_sensor_lux_show(struct device *dev,
 		goto err_exit;
 	}
 
+	if (lux < 3)
+		result = lux;
+	else if (3 <= lux && lux < 14)
+		result = (lux-3)*(150-15)/(14-3)+15;
+	else if (14 <= lux && lux < 180)
+		result = (lux-14)*(1500-150)/(180-14)+150;
+	else if (180 <= lux && lux < 1894)
+		result = (lux-180)*(15000-1500)/(1894-180)+1500;
+	else if (1894 <= lux)
+		result = (lux-1894)*(30000-15000)/(3237-1894)+15000;
+
 	if (bh1721fvc->state == POWER_DOWN)
 		bh1721fvc_write_byte(bh1721fvc->client, commands[POWER_DOWN]);
-	return sprintf(buf, "%u\n", lux);
+	return sprintf(buf, "%u\n", result);
 
 err_exit:
 	bh1721fvc_write_byte(bh1721fvc->client, commands[POWER_DOWN]);
@@ -385,20 +397,36 @@ static int bh1721fvc_get_luxvalue(struct bh1721fvc_data *bh1721fvc, u16 * value)
 static void bh1721fvc_work_func_light(struct work_struct *work)
 {
 	int err;
-	s32 lux = 0;
+	u16 lux;
+	u32 result;
+	static int wake_adc = 1;
 	struct bh1721fvc_data *bh1721fvc = container_of(work,
 							struct bh1721fvc_data,
 							work_light);
 
 	err = bh1721fvc_get_luxvalue(bh1721fvc, &lux);
 	if (!err) {
-		bh1721fvc_dbmsg("lux 0x%0X (%d)\n", lux, lux);
-		if (lux > 60000)
-			lux = 60000;
-		if (lux == 0)
-			lux = -1;
-		input_report_rel(bh1721fvc->input_dev, REL_MISC, lux);
+
+		if (lux < 3)
+			result = lux;
+		else if (3 <= lux && lux < 14)
+			result = (lux-3)*(150-15)/(14-3)+15;
+		else if (14 <= lux && lux < 180)
+			result = (lux-14)*(1500-150)/(180-14)+150;
+		else if (180 <= lux && lux < 1894)
+			result = (lux-180)*(15000-1500)/(1894-180)+1500;
+		else if (1894 <= lux)
+			result = (lux-1894)*(30000-15000)/(3237-1894)+15000;
+
+		bh1721fvc_dbmsg("lux 0x%0X (%d)\n", result, result);
+		if (result > 60000)
+			result = 60000;
+		if (!result)
+			result += wake_adc++;
+		input_report_abs(bh1721fvc->input_dev, ABS_MISC, result);
 		input_sync(bh1721fvc->input_dev);
+		if (wake_adc > 2)
+			wake_adc = 0;
 	} else {
 		pr_err("%s: read word failed! (errno=%d)\n", __func__, err);
 	}
@@ -416,6 +444,7 @@ static enum hrtimer_restart bh1721fvc_timer_func(struct hrtimer *timer)
 
 int bh1721fvc_test_luxvalue(struct bh1721fvc_data *bh1721fvc)
 {
+	unsigned int result;
 	int retry;
 	u16 lux;
 	int err;
@@ -442,10 +471,20 @@ int bh1721fvc_test_luxvalue(struct bh1721fvc_data *bh1721fvc)
 		goto err_exit;
 	}
 
+	if (lux < 3)
+		result = lux;
+	else if (3 <= lux && lux < 14)
+		result = (lux-3)*(150-15)/(14-3)+15;
+	else if (14 <= lux && lux < 180)
+		result = (lux-14)*(1500-150)/(180-14)+150;
+	else if (180 <= lux && lux < 1894)
+		result = (lux-180)*(15000-1500)/(1894-180)+1500;
+	else if (1894 <= lux)
+		result = (lux-1894)*(30000-15000)/(3237-1894)+15000;
 
 	if (bh1721fvc->state == POWER_DOWN)
 		bh1721fvc_write_byte(bh1721fvc->client, commands[POWER_DOWN]);
-	return (int)lux;
+	return (int)result;
 err_exit:
 	bh1721fvc_write_byte(bh1721fvc->client, commands[POWER_DOWN]);
 	return err;
@@ -517,7 +556,9 @@ static int __devinit bh1721fvc_probe(struct i2c_client *client,
 
 	input_set_drvdata(input_dev, bh1721fvc);
 	input_dev->name = "light_sensor";
-	input_set_capability(input_dev, EV_REL, REL_MISC);
+	input_set_capability(input_dev, EV_ABS, ABS_MISC);
+	input_set_abs_params(input_dev, ABS_MISC,
+			     LUX_MIN_VALUE, LUX_MAX_VALUE, 0, 0);
 
 	bh1721fvc_dbmsg("registering lightsensor-level input device\n");
 	err = input_register_device(input_dev);

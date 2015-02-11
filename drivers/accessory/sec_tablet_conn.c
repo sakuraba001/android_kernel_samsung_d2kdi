@@ -78,7 +78,6 @@ struct acc_con_info {
 	int accessory_irq;
 	int dock_irq;
 	int mhl_irq;
-	int adc_val;
 };
 
 static int check_using_stmpe811_adc(void)
@@ -109,23 +108,12 @@ static int connector_detect_change(void)
 			else if (adc_min > adc_buff[i])
 				adc_min = adc_buff[i];
 		}
-		mdelay(1);
+		msleep(20);
 	}
 	adc = (adc_sum - adc_max - adc_min)/3;
 	ACC_CONDEV_DBG("ACCESSORY_ID : ADC value = %d\n", adc);
 	return (int)adc;
 }
-
-#define MAX_ADC_USBOTG		2841
-#define MIN_ADC_USBOTG		2623
-#define MAX_ADC_CAMERON		2557
-#define MIN_ADC_CAMERON		2361
-#define MAX_ADC_LINEOUT2	2324
-#define MIN_ADC_LINEOUT2	2146
-#define MAX_ADC_CARMOUNT	1784
-#define MIN_ADC_CARMOUNT	1647
-#define MAX_ADC_LINEOUT		1281
-#define MIN_ADC_LINEOUT		1100
 
 void acc_notified(struct acc_con_info *acc, int acc_adc)
 {
@@ -143,21 +131,21 @@ void acc_notified(struct acc_con_info *acc, int acc_adc)
 
 	if (acc_adc != false) {
 		if (check_using_stmpe811_adc()) {
-			if ((MIN_ADC_LINEOUT < acc_adc) && (MAX_ADC_LINEOUT > acc_adc)) {
+			if ((1207 < acc_adc) && (1256 > acc_adc)) {
 				env_ptr = "ACCESSORY=lineout";
 				current_accessory = ACCESSORY_LINEOUT;
-			} else if ((MIN_ADC_CARMOUNT < acc_adc) && (MAX_ADC_CARMOUNT > acc_adc)) {
+			} else if ((1680 < acc_adc) && (1749 > acc_adc)) {
 				env_ptr = "ACCESSORY=carmount";
 				acc->current_accessory = ACCESSORY_CARMOUNT;
-			} else if ((MIN_ADC_LINEOUT2 < acc_adc) && (MAX_ADC_LINEOUT2 > acc_adc)) {
+			} else if ((2189 < acc_adc) && (2278 > acc_adc)) {
 				env_ptr = "ACCESSORY=lineout";
 				current_accessory = ACCESSORY_LINEOUT;
 #ifdef CONFIG_CAMERON_HEALTH
-			} else if ((MIN_ADC_CAMERON < acc_adc) && (MAX_ADC_CAMERON > acc_adc)) {
+			} else if ((2400 < acc_adc) && (2500 > acc_adc)) {
 				env_ptr = "ACCESSORY=cameron";
 				current_accessory = ACCESSORY_CAMERON;
 #endif
-			} else if ((MIN_ADC_USBOTG < acc_adc) && (MAX_ADC_USBOTG > acc_adc)) {
+			} else if ((2676 < acc_adc) && (2785 > acc_adc)) {
 				env_ptr = "ACCESSORY=OTG";
 				current_accessory = ACCESSORY_OTG;
 			} else {
@@ -316,20 +304,6 @@ static void acc_dock_check(struct acc_con_info *acc, bool connected)
 	ACC_CONDEV_DBG("%s : %s", env_ptr, stat_ptr);
 }
 
-#if defined(CONFIG_VIDEO_MHL_TAB_V2)
-static void check_acc_mhl(struct acc_con_info *acc)
-{
-	if (gpio_get_value(acc->pdata->accessory_irq_gpio)) {
-		/*call MHL deinit */
-		mhl_onoff_ex(false);
-	} else {
-		mutex_lock(&acc->lock);
-		mhl_onoff_ex(true);
-		mutex_unlock(&acc->lock);
-	}
-}
-#endif
-
 static void check_acc_dock(struct acc_con_info *acc)
 {
 	if (gpio_get_value(acc->pdata->accessory_irq_gpio)) {
@@ -340,13 +314,16 @@ static void check_acc_dock(struct acc_con_info *acc)
 #ifdef CONFIG_SEC_KEYBOARD_DOCK
 		acc->pdata->check_keyboard(false);
 #endif
+#if defined(CONFIG_VIDEO_MHL_TAB_V2)
+		/*call MHL deinit */
+		mhl_onoff_ex(false);
+#endif
 		acc_dock_check(acc, false);
-		acc->adc_val = 0;
 	} else {
 		ACC_CONDEV_DBG("docking station attached!!!");
 
 		switch_set_state(&acc->dock_switch, UEVENT_DOCK_CONNECTED);
-		msleep(200);
+		msleep(100);
 		wake_lock(&acc->wake_lock);
 
 #ifdef CONFIG_SEC_KEYBOARD_DOCK
@@ -362,6 +339,9 @@ static void check_acc_dock(struct acc_con_info *acc)
 			switch_set_state(&acc->dock_switch, UEVENT_DOCK_DESK);
 			acc->current_dock = DOCK_DESK;
 		}
+#if defined(CONFIG_VIDEO_MHL_TAB_V2)
+		mhl_onoff_ex(true);
+#endif
 
 		acc_dock_check(acc, true);
 
@@ -373,19 +353,10 @@ static void check_acc_dock(struct acc_con_info *acc)
 static irqreturn_t acc_con_interrupt(int irq, void *ptr)
 {
 	struct acc_con_info *acc = ptr;
-	int adc_val = 0;
 
 	ACC_CONDEV_DBG("");
-	adc_val = connector_detect_change();
 
-	if ((acc->adc_val != adc_val) ||
-		(acc->current_dock != DOCK_KEYBOARD)) {
-		check_acc_dock(acc);
-		acc->adc_val = adc_val;
-	}
-#if defined(CONFIG_VIDEO_MHL_TAB_V2)
-	check_acc_mhl(acc);
-#endif
+	check_acc_dock(acc);
 
 	return IRQ_HANDLED;
 }
@@ -438,10 +409,6 @@ static int acc_con_interrupt_init(struct acc_con_info *acc)
 	}
 	gpio_direction_input(acc->pdata->accessory_irq_gpio);
 	acc->accessory_irq = gpio_to_irq(acc->pdata->accessory_irq_gpio);
-
-	if ( !gpio_get_value(acc->pdata->accessory_irq_gpio) )
-		acc_con_interrupt(acc->accessory_irq, acc);
-
 	ret = request_threaded_irq(acc->accessory_irq, NULL, acc_con_interrupt,
 			IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
 			"accessory_detect", acc);
@@ -554,7 +521,6 @@ static int acc_con_probe(struct platform_device *pdev)
 	acc->pdata = pdata;
 	acc->current_dock = DOCK_NONE;
 	acc->current_accessory = ACCESSORY_NONE;
-	acc->adc_val = 0;
 
 	mutex_init(&acc->lock);
 

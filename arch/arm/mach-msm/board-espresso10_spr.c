@@ -139,6 +139,7 @@
 #include <mach/msm_rtb.h>
 #include <mach/msm_cache_dump.h>
 #include <mach/scm.h>
+#include <mach/iommu_domains.h>
 
 #ifdef CONFIG_IRDA_MC96
 #include <linux/ir_remote_con.h>
@@ -316,21 +317,22 @@ static struct msm_gpiomux_config msm8960_sec_ts_configs[] = {
 #define MSM_HDMI_PRIM_PMEM_SIZE 0x4000000 /* 64 Mbytes */
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-#define MSM_PMEM_KERNEL_EBI1_SIZE  0x280000
+#define MSM_PMEM_KERNEL_EBI1_SIZE  0x280000 /* 2.5MB */
 #ifdef CONFIG_MSM_IOMMU
 #define MSM_ION_MM_SIZE            0x3800000
 #define MSM_ION_SF_SIZE            0x0
 #define MSM_ION_QSECOM_SIZE        0x780000 /* (7.5MB) */
 #define MSM_ION_HEAP_NUM	7
 #else
-#define MSM_ION_MM_SIZE            MSM_PMEM_ADSP_SIZE
-#define MSM_ION_SF_SIZE            0x2200000
-#define MSM_ION_QSECOM_SIZE        0x600000 /* (6MB) */
+#define MSM_ION_MM_SIZE		MSM_PMEM_ADSP_SIZE
+#define MSM_ION_SF_SIZE		0x3500000 /* 53MB */
+#define MSM_ION_QSECOM_SIZE	0x100000 /* (1MB) */
 #define MSM_ION_HEAP_NUM	8
 #endif
 #define MSM_ION_MM_FW_SIZE	0x200000 /* (2MB) */
 #define MSM_ION_MFC_SIZE	SZ_8K
-#define MSM_ION_AUDIO_SIZE	0x1000 /* 4KB */
+#define MSM_ION_AUDIO_SIZE	MSM_PMEM_AUDIO_SIZE
+
 #define MSM_LIQUID_ION_MM_SIZE (MSM_ION_MM_SIZE + 0x600000)
 #define MSM_LIQUID_ION_SF_SIZE MSM_LIQUID_PMEM_SIZE
 #define MSM_HDMI_PRIM_ION_SF_SIZE MSM_HDMI_PRIM_PMEM_SIZE
@@ -502,7 +504,7 @@ static void __init size_pmem_devices(void)
 	if (!pmem_param_set) {
 		if (machine_is_msm8960_liquid())
 			pmem_size = MSM_LIQUID_PMEM_SIZE;
-		if (hdmi_is_primary)
+		if (msm8960_hdmi_as_primary_selected())
 			pmem_size = MSM_HDMI_PRIM_PMEM_SIZE;
 	}
 
@@ -540,10 +542,12 @@ static int msm8960_paddr_to_memtype(unsigned int paddr)
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 static struct ion_cp_heap_pdata cp_mm_ion_pdata = {
 	.permission_type = IPT_TYPE_MM_CARVEOUT,
-	.align = PAGE_SIZE,
+	.align = SZ_64K,
 	.reusable = FMEM_ENABLED,
 	.mem_is_fmem = FMEM_ENABLED,
 	.fixed_position = FIXED_MIDDLE,
+	.iommu_map_all = 1,
+	.iommu_2x_map_domain = VIDEO_DOMAIN,
 };
 
 static struct ion_cp_heap_pdata cp_mfc_ion_pdata = {
@@ -668,21 +672,22 @@ static void __init adjust_mem_for_liquid(void)
 		if (machine_is_msm8960_liquid())
 			msm_ion_sf_size = MSM_LIQUID_ION_SF_SIZE;
 
-		if (hdmi_is_primary)
+		if (msm8960_hdmi_as_primary_selected())
 			msm_ion_sf_size = MSM_HDMI_PRIM_ION_SF_SIZE;
 
-		if (machine_is_msm8960_liquid() || hdmi_is_primary) {
-			for (i = 0; i < ion_pdata.nr; i++) {
-				if (ion_pdata.heaps[i].id == ION_SF_HEAP_ID) {
-					ion_pdata.heaps[i].size =
-						msm_ion_sf_size;
-					pr_debug("msm_ion_sf_size 0x%x\n",
-						msm_ion_sf_size);
+		if (machine_is_msm8960_liquid() || 
+		msm8960_hdmi_as_primary_selected()) {
+		for (i = 0; i < ion_pdata.nr; i++) {
+					if (ion_pdata.heaps[i].id == ION_SF_HEAP_ID) {
+						ion_pdata.heaps[i].size =
+							msm_ion_sf_size;
+						pr_debug("msm_ion_sf_size 0x%x\n",
+							msm_ion_sf_size);
 				break;
-				}
 			}
 		}
 	}
+}
 }
 
 static void __init reserve_mem_for_ion(enum ion_memory_types mem_type,
@@ -734,6 +739,7 @@ static void __init reserve_ion_memory(void)
 	fmem_pdata.size = 0;
 	fmem_pdata.reserved_size_low = 0;
 	fmem_pdata.reserved_size_high = 0;
+	fmem_pdata.align = PAGE_SIZE;
 	fixed_low_size = 0;
 	fixed_middle_size = 0;
 	fixed_high_size = 0;
@@ -759,7 +765,11 @@ static void __init reserve_ion_memory(void)
 	}
 
 	for (i = 0; i < ion_pdata.nr; ++i) {
-		const struct ion_platform_heap *heap = &(ion_pdata.heaps[i]);
+		struct ion_platform_heap *heap =
+						&(ion_pdata.heaps[i]);
+		int align = SZ_4K;
+		int iommu_map_all = 0;
+		int adjacent_mem_id = INVALID_HEAP_ID;
 
 		if (heap->extra_data) {
 			int fixed_position = NOT_FIXED;
@@ -771,16 +781,34 @@ static void __init reserve_ion_memory(void)
 					heap->extra_data)->mem_is_fmem;
 				fixed_position = ((struct ion_cp_heap_pdata *)
 					heap->extra_data)->fixed_position;
+					align = ((struct ion_cp_heap_pdata *)
+						heap->extra_data)->align;
+				iommu_map_all =
+					((struct ion_cp_heap_pdata *)
+					heap->extra_data)->iommu_map_all;
 				break;
 			case ION_HEAP_TYPE_CARVEOUT:
 				mem_is_fmem = ((struct ion_co_heap_pdata *)
 					heap->extra_data)->mem_is_fmem;
 				fixed_position = ((struct ion_co_heap_pdata *)
 					heap->extra_data)->fixed_position;
+					adjacent_mem_id = ((struct ion_co_heap_pdata *)
+					heap->extra_data)->adjacent_mem_id;
 				break;
 			default:
 				break;
 			}
+			
+			if (iommu_map_all) {
+				if (heap->size & (SZ_64K-1)) {
+					heap->size = ALIGN(heap->size, SZ_64K);
+					pr_info("Heap %s not aligned to 64K. Adjusting size to %x\n",
+						heap->name, heap->size);
+				}
+			}
+
+			if (mem_is_fmem && adjacent_mem_id != INVALID_HEAP_ID)
+				fmem_pdata.align = align;
 
 			if (fixed_position != NOT_FIXED)
 				fixed_size += heap->size;
@@ -995,7 +1023,7 @@ static void __init msm8960_reserve(void)
 		pr_info("fmem start %lx (fixed) size %lx\n",
 			fmem_pdata.phys, fmem_pdata.size);
 #else
-	fmem_pdata.phys = reserve_memory_for_fmem(fmem_pdata.size);
+		fmem_pdata.phys = reserve_memory_for_fmem(fmem_pdata.size, fmem_pdata.align);
 #endif
 	}
 }
@@ -1353,7 +1381,7 @@ struct sii9234_platform_data sii9234_pdata = {
 	.hw_onoff = sii9234_hw_onoff,
 	.hw_reset = sii9234_hw_reset,
 	.gpio_cfg = mhl_gpio_config,
-	.swing_level = 0xF9,
+	.swing_level = 0xEB,
 #if defined(CONFIG_VIDEO_MHL_V2)
 	.vbus_present = fsa9485_mhl_cb,
 #endif
@@ -1949,17 +1977,6 @@ static struct mpu_platform_data mpu_data_00 = {
 };
 #endif /*CONFIG_MPU_SENSORS_MPU6050B1 */
 
-#ifdef CONFIG_INPUT_YAS_SENSORS
-static struct yas_platform_data geomagnetic_pdata;
-static int __init yas_platform_data_init(void)
-{
-	if (system_rev < BOARD_REV05)
-		geomagnetic_pdata.mag_orientation = YAS532_POSITION_7;
-	else
-		geomagnetic_pdata.mag_orientation = YAS532_POSITION_3;
-}
-#endif
-
 #if defined(CONFIG_SENSORS_AK8975) || \
 	defined(CONFIG_MPU_SENSORS_MPU6050B1) || \
 	defined(CONFIG_INPUT_BMP180) || \
@@ -2004,7 +2021,6 @@ static struct i2c_board_info sns_i2c_borad_info[] = {
 	},
 	{
 		I2C_BOARD_INFO("geomagnetic", 0x2e),
-		.platform_data = &geomagnetic_pdata
 	},
 
 #endif
@@ -3816,7 +3832,7 @@ static struct sec_jack_zone jack_zones[] = {
 		.jack_type	= SEC_HEADSET_3POLE,
 	},
 	[1] = {
-		.adc_high	= 990,
+		.adc_high	= 630,
 		.delay_ms	= 10,
 		.check_count	= 10,
 		.jack_type	= SEC_HEADSET_3POLE,
@@ -3834,17 +3850,17 @@ static struct sec_jack_buttons_zone jack_buttons_zones[] = {
 	{
 		.code		= KEY_MEDIA,
 		.adc_low	= 0,
-		.adc_high	= 153,
+		.adc_high	= 93,
 	},
 	{
 		.code		= KEY_VOLUMEUP,
-		.adc_low	= 154,
-		.adc_high	= 339,
+		.adc_low	= 94,
+		.adc_high	= 217,
 	},
 	{
 		.code		= KEY_VOLUMEDOWN,
-		.adc_low	= 340,
-		.adc_high	= 680,
+		.adc_low	= 218,
+		.adc_high	= 450,
 	},
 };
 
@@ -4038,6 +4054,7 @@ static struct platform_device *espresso10_spr_devices[] __initdata = {
 	&msm_8960_q6_mss_sw,
 	&msm_8960_riva,
 	&msm_pil_tzapps,
+	&msm_pil_vidc,
 	&msm8960_device_otg,
 	&msm8960_device_gadget_peripheral,
 	&msm_device_hsusb_host,
@@ -4176,28 +4193,15 @@ static struct msm_cpuidle_state msm_cstates[] __initdata = {
 	{0, 0, "C0", "WFI",
 		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT},
 
-	{0, 1, "C1", "STANDALONE_POWER_COLLAPSE",
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE},
-
-	{0, 2, "C2", "POWER_COLLAPSE",
+	{0, 1, "C2", "POWER_COLLAPSE",
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE},
 
 	{1, 0, "C0", "WFI",
 		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT},
-
-	{1, 1, "C1", "STANDALONE_POWER_COLLAPSE",
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE},
 };
 
 static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_POWER_COLLAPSE)] = {
-		.idle_supported = 1,
-		.suspend_supported = 1,
-		.idle_enabled = 0,
-		.suspend_enabled = 0,
-	},
-
-	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
 		.idle_supported = 1,
 		.suspend_supported = 1,
 		.idle_enabled = 0,
@@ -4213,13 +4217,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 
 	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_POWER_COLLAPSE)] = {
 		.idle_supported = 0,
-		.suspend_supported = 1,
-		.idle_enabled = 0,
-		.suspend_enabled = 0,
-	},
-
-	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
-		.idle_supported = 1,
 		.suspend_supported = 1,
 		.idle_enabled = 0,
 		.suspend_enabled = 0,
@@ -4242,10 +4239,10 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] = {
 	},
 
 	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE,
-		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
-		true,
-		2000, 200, 576000, 2000,
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(ON, GDHS, MAX, ACTIVE),
+		false,
+		8500, 51, 1122000, 8500,
 	},
 
 	{
@@ -4260,6 +4257,13 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] = {
 		MSM_RPMRS_LIMITS(ON, HSFS_OPEN, ACTIVE, RET_HIGH),
 		false,
 		10000, 51, 1130300, 10000,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, GDHS, MAX, ACTIVE),
+		false,
+		12000, 14, 2205900, 12000,
 	},
 
 	{
@@ -4800,9 +4804,6 @@ static void __init samsung_espresso10_spr_init(void)
 
 #ifndef CONFIG_USB_SWITCH_FSA9485
 	uart_connecting = 0;
-#endif
-#ifdef CONFIG_INPUT_YAS_SENSORS
-	yas_platform_data_init();
 #endif
 #ifdef CONFIG_30PIN_CONN
 	acc_int_init();

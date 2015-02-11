@@ -130,6 +130,7 @@ struct inv_mpu_state {
 	__u8 i2c_slaves_enabled;
 	bool accel_reactive;
 	bool use_accel_reactive;
+	bool reactive_factory;
 };
 
 /* Platform data for the MPU */

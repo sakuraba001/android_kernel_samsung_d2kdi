@@ -2375,6 +2375,9 @@ static void opt_init(void)
 		gpio_direction_input(prox_int);
 		gpio_free(prox_int);
 	}
+#if defined(CONFIG_OPTICAL_GP2AP020A00F)
+		opt_gp2a_data.version = 1;
+#endif
 }
 #endif
 

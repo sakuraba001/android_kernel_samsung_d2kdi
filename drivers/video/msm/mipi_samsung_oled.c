@@ -24,7 +24,8 @@
 	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) \
 	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_HD_PT) \
 	|| defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_QHD_PT) \
-	|| defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_WVGA_PT)
+	|| defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_WVGA_PT)   \
+	|| defined (CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_HD_PT_PANEL)
 #include "mdp4_video_enhance.h"
 #endif
 
@@ -44,7 +45,7 @@ static char elvss_value;
 int is_lcd_connected = 1;
 
 #ifdef USE_READ_ID
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 static DEFINE_MUTEX(mipi_lp_mutex);
 char samsung_manufacture_id1_cmd[8] = {
 	0x00, 0x00, 0x09, 0x40, 0xda, 0x00, 0x06, 0xA0};
@@ -68,7 +69,7 @@ static struct dsi_cmd_desc samsung_manufacture_id3_cmd = {
 static uint32 mipi_samsung_manufacture_id(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *rp, *tp;
-#if 1// CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	char *cmd_lp;
 #else
 	struct dsi_cmd_desc *cmd;
@@ -80,7 +81,7 @@ static uint32 mipi_samsung_manufacture_id(struct msm_fb_data_type *mfd)
 	mipi_dsi_buf_init(rp);
 	mipi_dsi_buf_init(tp);
 
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	cmd_lp = &samsung_manufacture_id1_cmd;
 	mipi_dsi_cmds_rx_lp(mfd, tp, rp, cmd_lp, 1);
 #else
@@ -94,7 +95,7 @@ static uint32 mipi_samsung_manufacture_id(struct msm_fb_data_type *mfd)
 	mipi_dsi_buf_init(rp);
 	mipi_dsi_buf_init(tp);
 
-#if 1// CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	cmd_lp = &samsung_manufacture_id2_cmd;
 	mipi_dsi_cmds_rx_lp(mfd, tp, rp, cmd_lp, 1);
 #else
@@ -108,7 +109,7 @@ static uint32 mipi_samsung_manufacture_id(struct msm_fb_data_type *mfd)
 
 	mipi_dsi_buf_init(rp);
 	mipi_dsi_buf_init(tp);
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	cmd_lp = &samsung_manufacture_id3_cmd;
 	mipi_dsi_cmds_rx_lp(mfd, tp, rp, cmd_lp, 1);
 #else
@@ -205,13 +206,13 @@ static void read_reg(char srcReg, int srcLength, char *destBuffer,
 		/* set read register address */
 		reg_set_read_register[1] = ea8868_read_address[read_addr_cnt];
 		mipi_dsi_buf_init(&msd.samsung_tx_buf);
-		mipi_dsi_cmds_tx(pMFD, &msd.samsung_tx_buf,
+		mipi_dsi_cmds_tx(&msd.samsung_tx_buf,
 						&(ea8868_read_pos_cmd), 1);
 
 		/*set maxpacket size */
 		packet_size[0] = (char)one_read_size;
 		mipi_dsi_buf_init(&msd.samsung_tx_buf);
-		mipi_dsi_cmds_tx(pMFD, &msd.samsung_tx_buf,
+		mipi_dsi_cmds_tx(&msd.samsung_tx_buf,
 						&(ea8868_packet_size_cmd), 1);
 
 		mipi_dsi_buf_init(&msd.samsung_tx_buf);
@@ -295,8 +296,7 @@ static void read_reg(char srcReg, int srcLength, char *destBuffer,
 
 	packet_size[0] = (char)srcLength;
 	mipi_dsi_buf_init(&msd.samsung_tx_buf);
-	mipi_dsi_cmds_tx(pMFD, &msd.samsung_tx_buf, &(s6e8aa0_packet_size_cmd),
-			 1);
+	mipi_dsi_cmds_tx(&msd.samsung_tx_buf, &(s6e8aa0_packet_size_cmd), 1);
 
 #if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
 	msleep(20);
@@ -306,7 +306,7 @@ static void read_reg(char srcReg, int srcLength, char *destBuffer,
 	for (j = 0; j < loop_limit; j++) {
 		reg_read_pos[1] = read_pos;
 		if (mipi_dsi_cmds_tx
-		    (pMFD, &msd.samsung_tx_buf, &(s6e8aa0_read_pos_cmd),
+		    (&msd.samsung_tx_buf, &(s6e8aa0_read_pos_cmd),
 		     1) < 1) {
 			show_buffer_pos +=
 			    snprintf(show_buffer + show_buffer_pos, 256,
@@ -361,7 +361,7 @@ static int mipi_samsung_disp_send_cmd(struct msm_fb_data_type *mfd,
 	int cmd_size = 0;
 
 	wake_lock(&idle_wake_lock);
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	mutex_lock(&mipi_lp_mutex);
 #endif
 	if (lock)
@@ -479,33 +479,21 @@ static int mipi_samsung_disp_send_cmd(struct msm_fb_data_type *mfd,
 		goto unknown_command;
 
 	if (lock) {
-		if (mfd->panel_info.type == MIPI_CMD_PANEL) {
-			/* mdp4_dsi_cmd_busy_wait:
-				will turn on dsi clock also */
-			mdp4_dsi_cmd_dma_busy_wait(mfd);
-			mdp4_dsi_blt_dmap_busy_wait(mfd);
-		}
-		mipi_dsi_mdp_busy_wait(mfd);
-
+		mipi_dsi_mdp_busy_wait();
 		/* Added to resolved cmd loss during dimming factory test */
 		mdelay(1);
-		mipi_dsi_cmds_tx(mfd, &msd.samsung_tx_buf, cmd_desc, cmd_size);
+
+		mipi_dsi_cmds_tx(&msd.samsung_tx_buf, cmd_desc, cmd_size);
 
 		mutex_unlock(&mfd->dma->ov_mutex);
 	} else {
-		if (mfd->panel_info.type == MIPI_CMD_PANEL) {
-			/* mdp4_dsi_cmd_busy_wait:
-				will turn on dsi clock also */
-			mdp4_dsi_cmd_dma_busy_wait(mfd);
-			mdp4_dsi_blt_dmap_busy_wait(mfd);
-		}
-		mipi_dsi_mdp_busy_wait(mfd);
+		mipi_dsi_mdp_busy_wait();
 		/* Added to resolved cmd loss during dimming factory test */
 		mdelay(1);
-		mipi_dsi_cmds_tx(mfd, &msd.samsung_tx_buf, cmd_desc, cmd_size);
+		mipi_dsi_cmds_tx(&msd.samsung_tx_buf, cmd_desc, cmd_size);
 	}
 
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	mutex_unlock(&mipi_lp_mutex);
 #endif
 	wake_unlock(&idle_wake_lock);
@@ -516,7 +504,7 @@ unknown_command:
 	if (lock)
 		mutex_unlock(&mfd->dma->ov_mutex);
 
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#ifdef CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	mutex_unlock(&mipi_lp_mutex);
 #endif
 	wake_unlock(&idle_wake_lock);
@@ -880,9 +868,7 @@ static int mipi_samsung_disp_off(struct platform_device *pdev)
 		return -EINVAL;
 
 	mipi_samsung_disp_send_cmd(mfd, PANEL_READY_TO_OFF, false);
-#if !defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
 	mipi_samsung_disp_send_cmd(mfd, PANEL_OFF, false);
-#endif
 
 	msd.mpd->ldi_acl_stat = false;
 
@@ -892,17 +878,7 @@ static int mipi_samsung_disp_off(struct platform_device *pdev)
 static void __devinit mipi_samsung_disp_shutdown(struct platform_device *pdev)
 {
 	static struct mipi_dsi_platform_data *mipi_dsi_pdata;
-#if defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_WVGA_PT)\
-	|| defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_QHD_PT)
-	struct msm_fb_data_type *mfd;
-	mfd = platform_get_drvdata(msd.msm_pdev);
-	if (unlikely(!mfd))
-		return -ENODEV;
-	if (unlikely(mfd->key != MFD_KEY))
-		return -EINVAL;
-	mipi_samsung_disp_send_cmd(mfd, PANEL_READY_TO_OFF, false);
-	mipi_samsung_disp_send_cmd(mfd, PANEL_OFF, false);
-#endif
+
 	if (pdev->id != 0)
 		return;
 
@@ -934,9 +910,7 @@ boolean get_esd_refresh_stat(void)
 static void mipi_samsung_disp_backlight(struct msm_fb_data_type *mfd)
 {
 
-#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_CMD_QHD_PT)\
-	|| defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_WVGA_PT)\
-	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
+#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_CMD_QHD_PT)
 	mfd->backlight_ctrl_ongoing = TRUE;
 #else
 	mfd->backlight_ctrl_ongoing = FALSE;
@@ -1000,9 +974,7 @@ if (msd.mpd->set_acl && msd.dstat.acl_on && !msd.mpd->set_acl(mfd->bl_level)) {
 #endif
 
 end:
-#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_CMD_QHD_PT)\
-	|| defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_WVGA_PT)\
-	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
+#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_CMD_QHD_PT)
 	mfd->backlight_ctrl_ongoing = FALSE;
 #endif
 	return;
@@ -1047,9 +1019,6 @@ static void mipi_samsung_disp_early_suspend(struct early_suspend *h)
 		return;
 	}
 #endif
-#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
-	mipi_samsung_disp_send_cmd(mfd, PANEL_OFF, false);
-#endif
 
 #if !defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_HD_PT) && \
 	!defined(CONFIG_FB_MSM_MIPI_MAGNA_OLED_VIDEO_QHD_PT) && \
@@ -1066,7 +1035,9 @@ static void mipi_samsung_disp_late_resume(struct early_suspend *h)
 {
 	struct msm_fb_data_type *mfd;
 #if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_CMD_QHD_PT) \
-	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
+	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) \
+	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_HD_PT)  \
+	|| defined (CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_HD_PT_PANEL )
 	is_negativeMode_on();
 #endif
 	mfd = platform_get_drvdata(msd.msm_pdev);
@@ -1357,12 +1328,9 @@ static DEVICE_ATTR(auto_brightness, S_IRUGO | S_IWUSR | S_IWGRP,
 #define ID_E5H_IDLE 0x80
 #define ID_E5H_IDLE_2 0x84
 #define ID_E5H_IDLE_3 0x81
-#define ID_0AH_IDLE 0x9C
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
 char error_id2_cmd[8] = {
 	0x00, 0x00, 0x09, 0x40, 0xE5, 0x00, 0x06, 0xA0};
-char error_id3_cmd[8] = {
-	0x00, 0x00, 0x09, 0x40, 0x0A, 0x00, 0x06, 0xA0};
 #else
 static char error_id2[2] = {0xE5, 0x00}; /* DTYPE_DCS_READ */
 
@@ -1374,7 +1342,7 @@ static char error_buf[2];
 static void read_error_register(struct msm_fb_data_type *mfd)
 {
 	struct dsi_buf *rp, *tp;
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
 	char *cmd_lp;
 #else
 	struct dsi_cmd_desc *cmd;
@@ -1382,16 +1350,12 @@ static void read_error_register(struct msm_fb_data_type *mfd)
 
 	wake_lock(&idle_wake_lock);
 
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#if CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	mutex_lock(&mipi_lp_mutex);
 #endif
 	mutex_lock(&mfd->dma->ov_mutex);
 
-	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
-		mdp4_dsi_cmd_dma_busy_wait(mfd);
-		mdp4_dsi_blt_dmap_busy_wait(mfd);
-	}
-	mipi_dsi_mdp_busy_wait(mfd);
+	mipi_dsi_mdp_busy_wait();	
 
 	tp = &msd.samsung_tx_buf;
 	rp = &msd.samsung_rx_buf;
@@ -1399,19 +1363,13 @@ static void read_error_register(struct msm_fb_data_type *mfd)
 	mipi_dsi_buf_init(rp);
 	mipi_dsi_buf_init(tp);
 
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
 	cmd_lp = &error_id2_cmd;
 	mipi_dsi_cmds_rx_lp(mfd, tp, rp, cmd_lp, 1);
 	error_buf[0] = *rp->data;
 	mipi_dsi_cmds_rx_lp(mfd, tp, rp, cmd_lp, 1);
 
-	cmd_lp = &error_id3_cmd;
-	mipi_dsi_cmds_rx_lp(mfd, tp, rp, cmd_lp, 1);
-	error_buf[1] = *rp->data;
-	mipi_dsi_cmds_rx_lp(mfd, tp, rp, cmd_lp, 1);
-
-	//pr_debug("############ error buf E5 = %x\n", error_buf[0]);
-    //pr_debug("############ error buf 0A = %x\n", error_buf[1]);
+	pr_debug("############ error buf E5 = %x\n", error_buf[0]);
 #else
 	cmd = &error_id2_cmd;
 	mipi_dsi_cmds_rx(mfd, tp, rp, cmd, 1);
@@ -1420,7 +1378,7 @@ static void read_error_register(struct msm_fb_data_type *mfd)
 #endif
 
 	mutex_unlock(&mfd->dma->ov_mutex);
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#if CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT
 	mutex_unlock(&mipi_lp_mutex);
 #endif
 	wake_unlock(&idle_wake_lock);
@@ -1436,34 +1394,27 @@ static void esd_test_work_func(struct work_struct *work)
 		pr_info("%s NO PDEV.\n", __func__);
 		return;
 	}
+	return;
 
-#if (defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT) || defined(CONFIG_MACH_K2_KDI))
+#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_OLED_VIDEO_WVGA_PT)
 	read_error_register(mfd);
-	//pr_info("%s end E5H=0x%x 0AH=%x\n", __func__,     error_buf[0], error_buf[1]);
+	pr_info("%s E5H=0x%x esd_cnt:%d\n", __func__, error_buf[0], esd_cnt);
 #else
 	read_error_register(mfd);
-	//pr_info("%s end E5H=0x%x\n", __func__,
+	pr_info("%s end E5H=0x%x\n", __func__,
 			error_buf[0]);
 #endif
-
-	if (ID_0AH_IDLE != error_buf[1]) {
-			pr_info("%s: 0AH=%x\n", __func__,error_buf[1]);
-			esd_execute();
-			esd_cnt++;
-	}
-
-/*
 	if (ID_E5H_IDLE != error_buf[0]) {
 		if ((ID_E5H_IDLE_2 != error_buf[0]) && \
 			(error_buf[0] != ID_E5H_IDLE_3)) {
-			//pr_info("%s: E5H=%x 0AH=%x\n", __func__,
-			//	error_buf[0], error_buf[1]);
+			pr_info("%s: E5H=%x 0AH=%x\n", __func__,
+				error_buf[0], error_buf[2]);
 			esd_execute();
 
 			esd_cnt++;
 		}
 	}
-*/
+
 	if (mfd->resume_state != MIPI_SUSPEND_STATE)
 		queue_delayed_work(msd.mpd->esd_workqueue,
 				&(msd.mpd->esd_work), ESD_INTERVAL * HZ);

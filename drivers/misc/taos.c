@@ -412,7 +412,7 @@ static int taos_get_lux(struct taos_data *taos)
 	int coef_b = taos->pdata->coef_b;
 	int coef_c = taos->pdata->coef_c;
 	int coef_d = taos->pdata->coef_d;
-	int min_max = NULL;
+	int min_max = 0;
 
 	if (taos->pdata->min_max)
 		min_max = taos->pdata->min_max;
@@ -431,7 +431,7 @@ static int taos_get_lux(struct taos_data *taos)
 	lux1 = (int)((coef_a * cleardata - coef_b * irdata) / CPL);
 	lux2 = (int)((coef_c * cleardata - coef_d * irdata) / CPL);
 
-	if (min_max == NULL) {
+	if (min_max == 0) {
 		if (lux1 > lux2)
 			calculated_lux = lux1;
 		else if (lux2 >= lux1)
@@ -598,13 +598,13 @@ static ssize_t proximity_enable_store(struct device *dev,
 	if (new_value && !(taos->power_state & PROXIMITY_ENABLED)) {
 		if (!taos->power_state)
 			taos->pdata->power(true);
-		usleep_range(5000, 6000);
 		ret = proximity_open_offset(taos);
 		if (ret < 0 && ret != -ENOENT)
 			pr_err("%s: proximity_open_offset() failed\n",
 			__func__);
 		/* set prox_threshold from board file */
-		if (taos->offset_value != taos->initial_offset) {
+		if (taos->offset_value != taos->initial_offset
+			&& taos->cal_result == 1) {
 			if (taos->pdata->prox_th_hi_cal &&
 				taos->pdata->prox_th_low_cal) {
 				taos->threshold_high =
@@ -701,6 +701,9 @@ static int proximity_open_offset(struct taos_data *data)
 	pr_err("%s: data->offset_value = %d\n",
 		__func__, data->offset_value);
 	set_prox_offset(data, data->offset_value);
+	if (data->offset_value < 121 &&
+		data->offset_value != data->initial_offset)
+		data->cal_result = 1;
 	filp_close(offset_filp, current->files);
 	set_fs(old_fs);
 
@@ -766,30 +769,16 @@ static int proximity_store_offset(struct device *dev, bool do_calib)
 				if (adc >= 250) {
 					taos->offset_cal_high = true;
 				} else {
-					taos->offset_cal_high = false;
 					taos->offset_value =
 						taos->initial_offset;
 					break;
 				}
 				offset_cal_baseline = false;
 			} else	{
-				if (taos->offset_cal_high) {
-					if (adc > target_xtalk) {
-						taos->offset_value +=
-							offset_change;
-					} else {
-						taos->offset_value -=
-							offset_change;
-					}
-				} else	{
-					if (adc > target_xtalk) {
-						taos->offset_value -=
-							offset_change;
-					} else {
-						taos->offset_value +=
-							offset_change;
-					}
-				}
+				if (adc > target_xtalk)
+					taos->offset_value += offset_change;
+				else
+					taos->offset_value -= offset_change;
 				offset_change = (int)(offset_change / 2);
 				if (offset_change == 0)
 					break;
@@ -820,7 +809,7 @@ static int proximity_store_offset(struct device *dev, bool do_calib)
 			} else
 				taos->cal_result = 2;
 		}
-		if (taos->offset_cal_high != false)
+		if (taos->offset_cal_high == true)
 			set_prox_offset(taos, taos->offset_value);
 	} else {
 	/* tap reset button */
@@ -1070,9 +1059,8 @@ static DEVICE_ATTR(prox_avg, S_IRUGO|S_IWUSR, proximity_avg_show,
 	proximity_avg_store);
 static DEVICE_ATTR(state, S_IRUGO|S_IWUSR, proximity_state_show, NULL);
 
-static DEVICE_ATTR(prox_offset_pass, S_IRUGO|S_IWUSR,
-	prox_offset_pass_show, NULL);
-static DEVICE_ATTR(prox_thresh, 0644, proximity_thresh_show,
+static DEVICE_ATTR(prox_offset_pass, S_IRUGO, prox_offset_pass_show, NULL);
+static DEVICE_ATTR(prox_thresh, S_IRUGO|S_IWUSR, proximity_thresh_show,
 	proximity_thresh_store);
 
 static struct device_attribute *prox_sensor_attrs[] = {
@@ -1163,7 +1151,7 @@ static void taos_work_func_light(struct work_struct *work)
 {
 	struct taos_data *taos = container_of(work, struct taos_data,
 					      work_light);
-	int adc = taos_get_lux(taos);
+	int adc = lightsensor_get_adcvalue(taos);
 
 	input_report_abs(taos->light_input_dev, ABS_MISC, adc);
 	input_sync(taos->light_input_dev);

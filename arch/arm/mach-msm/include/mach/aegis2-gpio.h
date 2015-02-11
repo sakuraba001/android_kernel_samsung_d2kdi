@@ -23,9 +23,9 @@
 /* MSM8960 GPIO */
 #define GPIO_MDP_VSYNC			0
 #define GPIO_MHL_RST			1
+#define GPIO_MSM_FLASH_CNTL_EN	3
 #define GPIO_MSM_FLASH_NOW		2
 #define GPIO_CAM_MCLK2				2 /* >= REV07 */
-#define GPIO_MSM_FLASH_CNTL_EN	3
 #define GPIO_MAIN_CAM_STBY		-1 /*NC*/
 #define GPIO_MSM_FLASH_NOW2		4 /* >= REV07 */
 #define GPIO_CAM_MCLK				5

@@ -169,7 +169,7 @@
 #ifdef CONFIG_SAMSUNG_JACK
 #include <linux/sec_jack.h>
 #endif
-#ifdef CONFIG_TOUCHSCREEN_MMS134S
+#ifdef CONFIG_TOUCHSCREEN_MMS136
 struct tsp_callbacks *charger_callbacks;
 struct tsp_callbacks {
 	void (*inform_charger)(struct tsp_callbacks *tsp_cb, bool mode);
@@ -1168,7 +1168,7 @@ static void fsa9485_charger_cb(bool attached)
 		return;
 	}
 
-#ifdef CONFIG_TOUCHSCREEN_MMS134S
+#ifdef CONFIG_TOUCHSCREEN_MMS136
 	if (charger_callbacks && charger_callbacks->inform_charger)
 		charger_callbacks->inform_charger(charger_callbacks, attached);
 #endif
@@ -1542,15 +1542,15 @@ static struct sec_bat_platform_data sec_bat_pdata = {
 	.recharge_duration = 2 * 60 * 60,
 	.max_voltage = 4350 * 1000,
 	.recharge_voltage = 4300 * 1000,
-	.event_block = 627,
-	.high_block = 627,
-	.high_recovery = 423,
-	.low_block = -50,
-	.low_recovery = 0,
-	.lpm_high_block = 627,
-	.lpm_high_recovery = 423,
-	.lpm_low_block = -50,
-	.lpm_low_recovery = 0,
+	.event_block = 620,
+	.high_block = 620,
+	.high_recovery = 430,
+	.low_block = -60,
+	.low_recovery = -10,
+	.lpm_high_block = 455,
+	.lpm_high_recovery = 440,
+	.lpm_low_block = -60,
+	.lpm_low_recovery = -30,
 };
 
 static struct platform_device sec_device_battery = {
@@ -1758,10 +1758,10 @@ static struct taos_platform_data taos_pdata = {
 	.power	= taos_power_on,
 	.led_on	=	taos_led_onoff,
 	.als_int = GPIO_ALS_INT,
-	.prox_thresh_hi = 650,
-	.prox_thresh_low = 500,
-	.prox_th_hi_cal = 500,
-	.prox_th_low_cal = 400,
+	.prox_thresh_hi = 700,
+	.prox_thresh_low = 550,
+	.prox_th_hi_cal = 470,
+	.prox_th_low_cal = 380,
 	.als_time = 0xED,
 	.intr_filter = 0x33,
 	.prox_pulsecnt = 0x08,
@@ -2904,7 +2904,7 @@ put_mvs_otg:
 
 static int phy_settings[] = {
 	0x44, 0x80,
-	0x7F, 0x81,
+	0x6F, 0x81,
 	0x3C, 0x82,
 	0x13, 0x83,
 	-1,

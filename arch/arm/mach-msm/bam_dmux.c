@@ -2101,6 +2101,7 @@ static int bam_init_fallback(void)
 	return 0;
 
 register_bam_failed:
+	iounmap(a2_virt_addr);
 ioremap_failed:
 	return ret;
 }

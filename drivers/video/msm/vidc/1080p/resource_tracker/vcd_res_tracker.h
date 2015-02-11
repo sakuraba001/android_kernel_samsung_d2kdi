@@ -22,6 +22,14 @@
 #endif
 #include <mach/board.h>
 
+#define RESTRK_1080P_VGA_PERF_LEVEL    VCD_MIN_PERF_LEVEL
+#define RESTRK_1080P_720P_PERF_LEVEL   108000
+#define RESTRK_1080P_1080P_PERF_LEVEL  244800
+
+#define RESTRK_1080P_MIN_PERF_LEVEL RESTRK_1080P_VGA_PERF_LEVEL
+#define RESTRK_1080P_MAX_PERF_LEVEL RESTRK_1080P_1080P_PERF_LEVEL
+#define RESTRK_1080P_TURBO_PERF_LEVEL (RESTRK_1080P_MAX_PERF_LEVEL + 1)
+
 struct res_trk_context {
 	struct device *device;
 	u32 irq_num;
@@ -49,6 +57,7 @@ struct res_trk_context {
 	u32 mmu_clks_on;
 	u32 secure_session;
 	struct mutex secure_lock;
+	u32 sec_clk_heap;
 };
 
 #if DEBUG

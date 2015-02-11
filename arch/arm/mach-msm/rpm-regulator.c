@@ -606,8 +606,6 @@ int rpm_vreg_set_frequency(int vreg_id, enum rpm_vreg_freq freq)
 	if (rc)
 		vreg_err(vreg, "vreg_set failed, rc=%d\n", rc);
 
-	printk("rpm-regulator driver has probed .\n");
-
 	return rc;
 }
 EXPORT_SYMBOL_GPL(rpm_vreg_set_frequency);
